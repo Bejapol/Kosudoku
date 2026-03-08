@@ -1,0 +1,310 @@
+{
+  "recordTypes": [
+    {
+      "name": "UserProfile",
+      "fields": [
+        {
+          "name": "username",
+          "type": "STRING"
+        },
+        {
+          "name": "displayName",
+          "type": "STRING"
+        },
+        {
+          "name": "totalScore",
+          "type": "INT64"
+        },
+        {
+          "name": "gamesPlayed",
+          "type": "INT64"
+        },
+        {
+          "name": "gamesWon",
+          "type": "INT64"
+        },
+        {
+          "name": "avatar",
+          "type": "ASSETID"
+        },
+        {
+          "name": "createdAt",
+          "type": "TIMESTAMP"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "username",
+          "fields": [
+            {
+              "name": "username",
+              "type": "QUERYABLE"
+            }
+          ]
+        },
+        {
+          "name": "displayName",
+          "fields": [
+            {
+              "name": "displayName",
+              "type": "QUERYABLE"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GameSession",
+      "fields": [
+        {
+          "name": "hostRecordName",
+          "type": "STRING"
+        },
+        {
+          "name": "difficulty",
+          "type": "STRING"
+        },
+        {
+          "name": "puzzleData",
+          "type": "STRING"
+        },
+        {
+          "name": "solutionData",
+          "type": "STRING"
+        },
+        {
+          "name": "status",
+          "type": "STRING"
+        },
+        {
+          "name": "createdAt",
+          "type": "TIMESTAMP"
+        },
+        {
+          "name": "startedAt",
+          "type": "TIMESTAMP"
+        },
+        {
+          "name": "completedAt",
+          "type": "TIMESTAMP"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "status",
+          "fields": [
+            {
+              "name": "status",
+              "type": "QUERYABLE"
+            }
+          ]
+        },
+        {
+          "name": "createdAt",
+          "fields": [
+            {
+              "name": "createdAt",
+              "type": "SORTABLE"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PlayerGameState",
+      "fields": [
+        {
+          "name": "playerRecordName",
+          "type": "STRING"
+        },
+        {
+          "name": "playerUsername",
+          "type": "STRING"
+        },
+        {
+          "name": "gameSession",
+          "type": "REFERENCE",
+          "referencedType": "GameSession",
+          "deleteAction": "CASCADE"
+        },
+        {
+          "name": "currentBoardData",
+          "type": "STRING"
+        },
+        {
+          "name": "score",
+          "type": "INT64"
+        },
+        {
+          "name": "correctGuesses",
+          "type": "INT64"
+        },
+        {
+          "name": "incorrectGuesses",
+          "type": "INT64"
+        },
+        {
+          "name": "cellsCompleted",
+          "type": "STRING_LIST"
+        },
+        {
+          "name": "joinedAt",
+          "type": "TIMESTAMP"
+        },
+        {
+          "name": "lastMoveAt",
+          "type": "TIMESTAMP"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "playerRecordName",
+          "fields": [
+            {
+              "name": "playerRecordName",
+              "type": "QUERYABLE"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ChatMessage",
+      "fields": [
+        {
+          "name": "senderRecordName",
+          "type": "STRING"
+        },
+        {
+          "name": "senderUsername",
+          "type": "STRING"
+        },
+        {
+          "name": "content",
+          "type": "STRING"
+        },
+        {
+          "name": "messageType",
+          "type": "STRING"
+        },
+        {
+          "name": "timestamp",
+          "type": "TIMESTAMP"
+        },
+        {
+          "name": "gameSession",
+          "type": "REFERENCE",
+          "referencedType": "GameSession",
+          "deleteAction": "CASCADE"
+        },
+        {
+          "name": "groupChatID",
+          "type": "STRING"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "timestamp",
+          "fields": [
+            {
+              "name": "timestamp",
+              "type": "SORTABLE"
+            }
+          ]
+        },
+        {
+          "name": "groupChatID",
+          "fields": [
+            {
+              "name": "groupChatID",
+              "type": "QUERYABLE"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Friendship",
+      "fields": [
+        {
+          "name": "userRecordName",
+          "type": "STRING"
+        },
+        {
+          "name": "friendRecordName",
+          "type": "STRING"
+        },
+        {
+          "name": "friendUsername",
+          "type": "STRING"
+        },
+        {
+          "name": "friendDisplayName",
+          "type": "STRING"
+        },
+        {
+          "name": "status",
+          "type": "STRING"
+        },
+        {
+          "name": "createdAt",
+          "type": "TIMESTAMP"
+        },
+        {
+          "name": "acceptedAt",
+          "type": "TIMESTAMP"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "userRecordName",
+          "fields": [
+            {
+              "name": "userRecordName",
+              "type": "QUERYABLE"
+            }
+          ]
+        },
+        {
+          "name": "friendRecordName",
+          "fields": [
+            {
+              "name": "friendRecordName",
+              "type": "QUERYABLE"
+            }
+          ]
+        },
+        {
+          "name": "status",
+          "fields": [
+            {
+              "name": "status",
+              "type": "QUERYABLE"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GroupChat",
+      "fields": [
+        {
+          "name": "name",
+          "type": "STRING"
+        },
+        {
+          "name": "creatorRecordName",
+          "type": "STRING"
+        },
+        {
+          "name": "memberRecordNames",
+          "type": "STRING_LIST"
+        },
+        {
+          "name": "createdAt",
+          "type": "TIMESTAMP"
+        }
+      ]
+    }
+  ]
+}
