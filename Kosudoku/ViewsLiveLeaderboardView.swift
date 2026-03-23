@@ -11,6 +11,7 @@ import SwiftUI
 struct LiveLeaderboardView: View {
     let currentPlayer: PlayerGameState?
     let otherPlayers: [PlayerGameState]
+    let playerColorMap: [String: PlayerColor]
     @State private var isExpanded = false
     
     var allPlayers: [PlayerGameState] {
@@ -27,7 +28,8 @@ struct LiveLeaderboardView: View {
             if !isExpanded {
                 CompactLeaderboardView(
                     players: Array(allPlayers.prefix(3)),
-                    currentPlayerRecordName: currentPlayer?.playerRecordName
+                    currentPlayerRecordName: currentPlayer?.playerRecordName,
+                    playerColorMap: playerColorMap
                 )
                 .onTapGesture {
                     withAnimation {
@@ -38,7 +40,8 @@ struct LiveLeaderboardView: View {
                 // Expanded view - all players
                 ExpandedLeaderboardView(
                     players: allPlayers,
-                    currentPlayerRecordName: currentPlayer?.playerRecordName
+                    currentPlayerRecordName: currentPlayer?.playerRecordName,
+                    playerColorMap: playerColorMap
                 )
                 .onTapGesture {
                     withAnimation {
@@ -56,10 +59,14 @@ struct LiveLeaderboardView: View {
 struct CompactLeaderboardView: View {
     let players: [PlayerGameState]
     let currentPlayerRecordName: String?
+    let playerColorMap: [String: PlayerColor]
     
     var body: some View {
         HStack(spacing: 12) {
             ForEach(Array(players.enumerated()), id: \.element.id) { index, player in
+                let playerColor = playerColorMap[player.playerRecordName]?.color ?? .blue
+                let isCurrentUser = player.playerRecordName == currentPlayerRecordName
+                
                 VStack(spacing: 4) {
                     // Position badge
                     PositionBadge(position: index + 1)
@@ -68,23 +75,28 @@ struct CompactLeaderboardView: View {
                     Text(player.playerUsername)
                         .font(.caption)
                         .lineLimit(1)
-                        .foregroundColor(player.playerRecordName == currentPlayerRecordName ? .blue : .primary)
-                        .bold(player.playerRecordName == currentPlayerRecordName)
+                        .foregroundColor(isCurrentUser ? playerColor : .primary)
+                        .bold(isCurrentUser)
                     
-                    // Score
+                    // Score with player color outline
                     Text("\(player.score)")
                         .font(.headline)
-                        .foregroundColor(player.playerRecordName == currentPlayerRecordName ? .blue : .primary)
+                        .foregroundColor(playerColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(playerColor, lineWidth: 1.5)
+                        )
                     
                     // Stats
-                    Text("✓\(player.correctGuesses) ✗\(player.incorrectGuesses)")
+                    Text("\u{2713}\(player.correctGuesses) \u{2717}\(player.incorrectGuesses)")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity)
-                .background(player.playerRecordName == currentPlayerRecordName ? 
-                           Color.blue.opacity(0.1) : Color.clear)
+                .background(isCurrentUser ? playerColor.opacity(0.1) : Color.clear)
                 .cornerRadius(8)
             }
         }
@@ -95,6 +107,7 @@ struct CompactLeaderboardView: View {
 struct ExpandedLeaderboardView: View {
     let players: [PlayerGameState]
     let currentPlayerRecordName: String?
+    let playerColorMap: [String: PlayerColor]
     
     var body: some View {
         VStack(spacing: 0) {
@@ -119,7 +132,8 @@ struct ExpandedLeaderboardView: View {
                         LeaderboardRowView(
                             player: player,
                             position: index + 1,
-                            isCurrentUser: player.playerRecordName == currentPlayerRecordName
+                            isCurrentUser: player.playerRecordName == currentPlayerRecordName,
+                            playerColor: playerColorMap[player.playerRecordName]?.color ?? .blue
                         )
                         
                         if index < players.count - 1 {
@@ -138,6 +152,7 @@ struct LeaderboardRowView: View {
     let player: PlayerGameState
     let position: Int
     let isCurrentUser: Bool
+    let playerColor: Color
     @State private var profileImageData: Data?
     @State private var cloudKitService = CloudKitService.shared
     
@@ -159,7 +174,7 @@ struct LeaderboardRowView: View {
                 Text(player.playerUsername)
                     .font(.subheadline)
                     .bold(isCurrentUser)
-                    .foregroundColor(isCurrentUser ? .blue : .primary)
+                    .foregroundColor(isCurrentUser ? playerColor : .primary)
                 
                 HStack(spacing: 12) {
                     Label("\(player.correctGuesses)", systemImage: "checkmark.circle.fill")
@@ -178,12 +193,18 @@ struct LeaderboardRowView: View {
             
             Spacer()
             
-            // Score
+            // Score with player color outline
             VStack(alignment: .trailing, spacing: 2) {
                 Text("\(player.score)")
                     .font(.title3)
                     .bold()
-                    .foregroundColor(isCurrentUser ? .blue : .primary)
+                    .foregroundColor(playerColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(playerColor, lineWidth: 2)
+                    )
                 
                 Text("points")
                     .font(.caption2)
@@ -192,7 +213,7 @@ struct LeaderboardRowView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 12)
-        .background(isCurrentUser ? Color.blue.opacity(0.05) : Color.clear)
+        .background(isCurrentUser ? playerColor.opacity(0.05) : Color.clear)
         .task {
             await loadProfilePhoto()
         }
@@ -284,6 +305,11 @@ struct PositionBadge: View {
                 playerUsername: "charlie",
                 gameSession: GameSession(hostRecordName: "host", difficulty: .medium, puzzleData: "{}", solutionData: "{}")
             )
+        ],
+        playerColorMap: [
+            "player1": .coral,
+            "player2": .teal,
+            "player3": .amber
         ]
     )
     .padding()
@@ -302,10 +328,11 @@ struct PositionBadge: View {
                 playerUsername: "bob",
                 gameSession: GameSession(hostRecordName: "host", difficulty: .medium, puzzleData: "{}", solutionData: "{}")
             )
+        ],
+        playerColorMap: [
+            "player1": .coral,
+            "player2": .teal
         ]
     )
     .padding()
-    .onAppear {
-        // Show expanded state
-    }
 }

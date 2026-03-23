@@ -41,7 +41,10 @@ final class GameSession {
     // Host information
     var hostRecordName: String
     
-    init(hostRecordName: String, difficulty: DifficultyLevel, puzzleData: String, solutionData: String) {
+    // Invited players (CloudKit record names)
+    var invitedPlayers: [String] = []
+    
+    init(hostRecordName: String, difficulty: DifficultyLevel, puzzleData: String, solutionData: String, invitedPlayers: [String] = []) {
         self.id = UUID()
         self.createdAt = Date()
         self.status = .waiting
@@ -49,5 +52,6 @@ final class GameSession {
         self.hostRecordName = hostRecordName
         self.puzzleData = puzzleData
         self.solutionData = solutionData
+        self.invitedPlayers = invitedPlayers
     }
 }

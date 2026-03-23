@@ -94,18 +94,19 @@ struct EditProfileView: View {
     private func saveProfile() async {
         isSaving = true
         
+        // Update the local SwiftData model
         profile.displayName = displayName
         profile.avatarImageData = profilePhotoData
         
+        // Sync to CloudKit in the background — don't block dismissal on it
         do {
-            // saveUserProfile handles both creating and updating profiles
             try await cloudKitService.saveUserProfile(profile)
-            isSaving = false
-            dismiss()
         } catch {
-            print("Error saving profile: \(error)")
-            isSaving = false
+            print("Error syncing profile to CloudKit: \(error)")
         }
+        
+        isSaving = false
+        dismiss()
     }
 }
 

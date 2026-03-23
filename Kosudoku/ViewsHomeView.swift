@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import CloudKit
 
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
@@ -173,7 +174,9 @@ struct HomeView: View {
                                 .padding()
                         } else {
                             ForEach(completedGames.prefix(5)) { game in
-                                CompletedGameCard(session: game)
+                                CompletedGameCard(session: game) {
+                                    viewCompletedGame(game)
+                                }
                             }
                         }
                     }
@@ -220,14 +223,30 @@ struct HomeView: View {
         .onAppear {
             setupGameManager()
         }
+        .task {
+            await syncInvitedGames()
+        }
+        .refreshable {
+            await syncInvitedGames()
+        }
     }
     
     private var activeGames: [GameSession] {
-        gameSessions.filter { $0.status == .active }
+        let currentUser = cloudKitService.currentUserRecordName ?? ""
+        return gameSessions.filter { game in
+            game.status == .active &&
+            (game.hostRecordName == currentUser || game.invitedPlayers.contains(currentUser))
+        }
     }
     
+    /// Games where the current user is invited and the game is still waiting to start
     private var waitingGames: [GameSession] {
-        gameSessions.filter { $0.status == .waiting }
+        let currentUser = cloudKitService.currentUserRecordName ?? ""
+        return gameSessions.filter { game in
+            game.status == .waiting &&
+            game.hostRecordName != currentUser &&
+            game.invitedPlayers.contains(currentUser)
+        }
     }
     
     private var completedGames: [GameSession] {
@@ -238,6 +257,60 @@ struct HomeView: View {
     private func setupGameManager() {
         if gameManager == nil {
             gameManager = GameManager(modelContext: modelContext)
+        }
+    }
+    
+    /// Fetch games the current user is invited to from CloudKit and insert them locally
+    private func syncInvitedGames() async {
+        guard cloudKitService.isAuthenticated else { return }
+        
+        do {
+            let records = try await cloudKitService.fetchInvitedGameSessions()
+            
+            // Get existing local game CloudKit record names for deduplication
+            let existingRecordNames = Set(gameSessions.compactMap { $0.cloudKitRecordName })
+            
+            for record in records {
+                let recordName = record.recordID.recordName
+                
+                // Skip if we already have this game locally
+                if existingRecordNames.contains(recordName) {
+                    continue
+                }
+                
+                guard let hostRecordName = record["hostRecordName"] as? String,
+                      let difficultyRaw = record["difficulty"] as? String,
+                      let difficulty = DifficultyLevel(rawValue: difficultyRaw),
+                      let puzzleData = record["puzzleData"] as? String,
+                      let solutionData = record["solutionData"] as? String else {
+                    continue
+                }
+                
+                let session = GameSession(
+                    hostRecordName: hostRecordName,
+                    difficulty: difficulty,
+                    puzzleData: puzzleData,
+                    solutionData: solutionData,
+                    invitedPlayers: (record["invitedPlayers"] as? [String]) ?? []
+                )
+                session.cloudKitRecordName = recordName
+                session.createdAt = (record["createdAt"] as? Date) ?? Date()
+                
+                if let statusRaw = record["status"] as? String,
+                   let status = GameStatus(rawValue: statusRaw) {
+                    session.status = status
+                }
+                if let startedAt = record["startedAt"] as? Date {
+                    session.startedAt = startedAt
+                }
+                
+                modelContext.insert(session)
+                print("📥 Synced invited game: \(recordName)")
+            }
+            
+            try? modelContext.save()
+        } catch {
+            print("⚠️ Failed to sync invited games: \(error.localizedDescription)")
         }
     }
     
@@ -278,6 +351,17 @@ struct HomeView: View {
             errorMessage = error.localizedDescription
             showingError = true
         }
+    }
+    
+    private func viewCompletedGame(_ session: GameSession) {
+        guard let manager = gameManager else {
+            errorMessage = "Game manager not initialized"
+            showingError = true
+            return
+        }
+        
+        manager.viewCompletedGame(session)
+        showingGameView = true
     }
     
     private func rejoinGame(_ session: GameSession) async {
@@ -401,26 +485,42 @@ struct GameSessionCard: View {
 
 struct CompletedGameCard: View {
     let session: GameSession
+    let action: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
-                Text(session.difficulty.rawValue.capitalized)
-                    .font(.headline)
-                Spacer()
-                if let completedAt = session.completedAt {
-                    Text(completedAt, format: .relative(presentation: .named))
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                    Text(session.difficulty.rawValue.capitalized)
+                        .font(.headline)
+                    Spacer()
+                    if let completedAt = session.completedAt {
+                        Text(completedAt, format: .relative(presentation: .named))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                if let startedAt = session.startedAt, let completedAt = session.completedAt {
+                    let elapsed = Int(completedAt.timeIntervalSince(startedAt))
+                    let minutes = elapsed / 60
+                    let seconds = elapsed % 60
+                    Text("Time: \(String(format: "%02d:%02d", minutes, seconds))")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
+            .padding()
+            .background(Color(.systemGray6))
+            .cornerRadius(12)
+            .padding(.horizontal)
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-        .padding(.horizontal)
+        .buttonStyle(.plain)
     }
 }
 

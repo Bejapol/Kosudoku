@@ -28,6 +28,13 @@ final class PlayerGameState {
     var joinedAt: Date
     var lastMoveAt: Date?
     
+    // Currently selected cell (synced to show highlights to other players)
+    var selectedRow: Int?
+    var selectedCol: Int?
+    
+    // CloudKit record name for updating the existing record
+    var cloudKitRecordName: String?
+    
     init(playerRecordName: String, playerUsername: String, gameSession: GameSession) {
         self.id = UUID()
         self.playerRecordName = playerRecordName

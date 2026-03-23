@@ -15,8 +15,10 @@ struct GameView: View {
     @State private var isNotesMode = false
     @State private var showingChat = false
     @State private var showingCancelAlert = false
+    @State private var showingCompletionAlert = false
     @State private var viewMode: ViewMode = .balanced
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     
     enum ViewMode {
         case gameboard  // Large gameboard, minimal controls
@@ -24,13 +26,36 @@ struct GameView: View {
         case controls   // Large controls, smaller gameboard
     }
     
+    private var isViewingCompleted: Bool {
+        gameManager.currentGame?.status == .completed
+    }
+    
+    private var currentPlayerColor: Color {
+        guard let recordName = gameManager.currentPlayerState?.playerRecordName else {
+            return PlayerColor.coral.color
+        }
+        return gameManager.playerColorMap[recordName]?.color ?? PlayerColor.coral.color
+    }
+    
+    private var cellSelections: [String: [PlayerColor]] {
+        var result: [String: [PlayerColor]] = [:]
+        for player in gameManager.otherPlayers {
+            guard let row = player.selectedRow, let col = player.selectedCol else { continue }
+            let key = "\(row)-\(col)"
+            let color = gameManager.playerColorMap[player.playerRecordName] ?? .coral
+            result[key, default: []].append(color)
+        }
+        return result
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // Live Leaderboard - shows all players' scores in real-time
-            if viewMode != .gameboard {
+            if viewMode != .gameboard && !isViewingCompleted {
                 LiveLeaderboardView(
                     currentPlayer: gameManager.currentPlayerState,
-                    otherPlayers: gameManager.otherPlayers
+                    otherPlayers: gameManager.otherPlayers,
+                    playerColorMap: gameManager.playerColorMap
                 )
                 .padding(.horizontal)
                 .padding(.top, 8)
@@ -44,59 +69,106 @@ struct GameView: View {
                 let gridSize: CGFloat = {
                     switch viewMode {
                     case .gameboard:
-                        // Maximize gameboard
-                        return max(0, min(geometry.size.width, geometry.size.height) - 20)
+                        // Maximize gameboard - leave more room at top for safe area
+                        return max(0, min(geometry.size.width, geometry.size.height - 40) - 20)
                     case .balanced:
-                        // Default size
-                        return max(0, min(geometry.size.width, geometry.size.height) - 40)
+                        // Default size - prioritize larger gameboard
+                        return max(0, min(geometry.size.width, geometry.size.height) - 16)
                     case .controls:
                         // Smaller gameboard
                         return max(0, min(geometry.size.width, geometry.size.height) * 0.7)
                     }
                 }()
                 
-                VStack {
-                    Spacer()
-                    
-                    SudokuGridView(
-                        board: gameManager.currentBoard ?? SudokuBoard(),
-                        selectedCell: gameManager.selectedCell,
-                        onCellTap: { row, col in
-                            gameManager.selectedCell = (row, col)
-                        }
-                    )
-                    .frame(width: gridSize, height: gridSize)
-                    
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        // Cycle through modes or toggle
+                ZStack {
+                    // Sudoku grid - centered and always interactive
+                    VStack {
                         if viewMode == .gameboard {
-                            viewMode = .balanced
+                            Spacer()
+                                .frame(height: 60)  // Extra space at top when maximized
                         } else {
-                            viewMode = .gameboard
+                            Spacer()
                         }
+                        
+                        SudokuGridView(
+                            board: gameManager.currentBoard ?? SudokuBoard(),
+                            selectedCell: gameManager.selectedCell,
+                            onCellTap: { row, col in
+                                gameManager.selectedCell = (row, col)
+                            },
+                            currentPlayerColor: currentPlayerColor,
+                            cellSelections: cellSelections,
+                            colorMap: gameManager.playerColorMap,
+                            cellEffect: $gameManager.lastCellEffect
+                        )
+                        .frame(width: gridSize, height: gridSize)
+                        
+                        Spacer()
                     }
+                    .frame(maxWidth: .infinity)
+                    
+
                 }
             }
             
-            if viewMode != .gameboard {
+            if viewMode != .gameboard && !isViewingCompleted {
                 Divider()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             
+            // Completed game summary
+            if isViewingCompleted {
+                VStack(spacing: 12) {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.title2)
+                        Text("Puzzle Complete")
+                            .font(.title3)
+                            .bold()
+                    }
+                    
+                    if let game = gameManager.currentGame,
+                       let startedAt = game.startedAt,
+                       let completedAt = game.completedAt {
+                        let elapsed = Int(completedAt.timeIntervalSince(startedAt))
+                        let minutes = elapsed / 60
+                        let seconds = elapsed % 60
+                        HStack(spacing: 20) {
+                            Label(game.difficulty.rawValue.capitalized, systemImage: "speedometer")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Label(String(format: "%02d:%02d", minutes, seconds), systemImage: "clock")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    Button {
+                        gameManager.leaveGame()
+                        dismiss()
+                    } label: {
+                        Text("Done")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
+                    .padding(.horizontal)
+                }
+                .padding(.vertical, 16)
+            }
             // Number pad and controls - Collapsible
-            if viewMode != .gameboard {
-                VStack(spacing: 16) {
+            else if viewMode != .gameboard {
+                VStack(spacing: 8) {
                     // Notes mode toggle
                     Toggle("Notes Mode", isOn: $isNotesMode)
                         .padding(.horizontal)
                     
                     // Number pad
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 12) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 8) {
                         ForEach(1...9, id: \.self) { number in
                             NumberButton(number: number, isSelected: selectedNumber == number) {
                                 if let cell = gameManager.selectedCell {
@@ -122,9 +194,9 @@ struct GameView: View {
                             }
                         } label: {
                             Image(systemName: "xmark")
-                                .font(.title2)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .aspectRatio(1, contentMode: .fit)
+                                .font(.title3)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
                                 .background(Color(.systemGray5))
                                 .cornerRadius(8)
                         }
@@ -135,9 +207,9 @@ struct GameView: View {
                                 gameManager.giveHint()
                             } label: {
                                 Image(systemName: "lightbulb.fill")
-                                    .font(.title2)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    .aspectRatio(1, contentMode: .fit)
+                                    .font(.title3)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
                                     .background(Color.yellow.opacity(0.3))
                                     .foregroundColor(.orange)
                                     .cornerRadius(8)
@@ -146,16 +218,16 @@ struct GameView: View {
                     }
                     .padding(.horizontal)
                     
-                    // Tap here hint
+                    // Maximize gameboard button
                     Button {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            viewMode = .controls
+                            viewMode = .gameboard
                         }
                     } label: {
                         HStack {
-                            Image(systemName: "chevron.up.circle.fill")
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
                                 .font(.caption)
-                            Text("Tap gameboard to maximize")
+                            Text("Maximize gameboard")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -163,45 +235,81 @@ struct GameView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.vertical)
+                .padding(.vertical, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else {
-                // Minimized controls - just essential number buttons
-                HStack(spacing: 16) {
-                    ForEach(1...9, id: \.self) { number in
-                        Button {
-                            if let cell = gameManager.selectedCell {
-                                if isNotesMode {
-                                    gameManager.toggleNote(row: cell.row, col: cell.col, note: number)
-                                } else {
-                                    Task {
-                                        try? await gameManager.makeMove(row: cell.row, col: cell.col, value: number)
+            } else if !isViewingCompleted {
+                // Full controls in maximized gameboard mode
+                VStack(spacing: 8) {
+                    // Notes mode toggle
+                    Toggle("Notes Mode", isOn: $isNotesMode)
+                        .padding(.horizontal)
+                    
+                    // Number pad
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 8) {
+                        ForEach(1...9, id: \.self) { number in
+                            NumberButton(number: number, isSelected: selectedNumber == number) {
+                                if let cell = gameManager.selectedCell {
+                                    if isNotesMode {
+                                        gameManager.toggleNote(row: cell.row, col: cell.col, note: number)
+                                    } else {
+                                        Task {
+                                            try? await gameManager.makeMove(row: cell.row, col: cell.col, value: number)
+                                        }
                                     }
                                 }
                             }
+                        }
+                        
+                        // Clear button
+                        Button {
+                            if let cell = gameManager.selectedCell,
+                               var board = gameManager.currentBoard,
+                               !board[cell.row, cell.col].isFixed {
+                                board[cell.row, cell.col].value = nil
+                                gameManager.currentBoard = board
+                            }
                         } label: {
-                            Text("\(number)")
-                                .font(.body)
-                                .fontWeight(.semibold)
+                            Image(systemName: "xmark")
+                                .font(.title3)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(selectedNumber == number ? Color.blue : Color(.systemGray6))
-                                .foregroundColor(selectedNumber == number ? .white : .primary)
+                                .padding(.vertical, 10)
+                                .background(Color(.systemGray5))
                                 .cornerRadius(8)
                         }
+                        
+                        // Hint button (only for solo players)
+                        if gameManager.isOnlyPlayer {
+                            Button {
+                                gameManager.giveHint()
+                            } label: {
+                                Image(systemName: "lightbulb.fill")
+                                    .font(.title3)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Color.yellow.opacity(0.3))
+                                    .foregroundColor(.orange)
+                                    .cornerRadius(8)
+                            }
+                        }
                     }
+                    .padding(.horizontal)
                 }
-                .padding(.horizontal)
                 .padding(.vertical, 8)
-                .background(Color(.systemBackground))
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                // Only show cancel button if player is alone
-                if gameManager.isOnlyPlayer {
+                if isViewingCompleted {
+                    Button {
+                        gameManager.leaveGame()
+                        dismiss()
+                    } label: {
+                        Text("Done")
+                    }
+                } else if gameManager.isOnlyPlayer {
+                    // Only show cancel button if player is alone
                     Button(role: .destructive) {
                         showingCancelAlert = true
                     } label: {
@@ -211,27 +319,29 @@ struct GameView: View {
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 16) {
-                    // View mode toggle button
-                    Button {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            switch viewMode {
-                            case .gameboard:
-                                viewMode = .balanced
-                            case .balanced:
-                                viewMode = .gameboard
-                            case .controls:
-                                viewMode = .balanced
+                if !isViewingCompleted {
+                    HStack(spacing: 16) {
+                        // View mode toggle button
+                        Button {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                switch viewMode {
+                                case .gameboard:
+                                    viewMode = .balanced
+                                case .balanced:
+                                    viewMode = .gameboard
+                                case .controls:
+                                    viewMode = .balanced
+                                }
                             }
+                        } label: {
+                            Image(systemName: viewMode == .gameboard ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                         }
-                    } label: {
-                        Image(systemName: viewMode == .gameboard ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                    }
-                    
-                    Button {
-                        showingChat.toggle()
-                    } label: {
-                        Image(systemName: "message.fill")
+                        
+                        Button {
+                            showingChat.toggle()
+                        } label: {
+                            Image(systemName: "message.fill")
+                        }
                     }
                 }
             }
@@ -254,6 +364,49 @@ struct GameView: View {
         .sheet(isPresented: $showingChat) {
             if let game = gameManager.currentGame {
                 GameChatView(gameSession: game)
+            }
+        }
+        .alert("Puzzle Complete!", isPresented: $showingCompletionAlert) {
+            Button("Done") {
+                gameManager.leaveGame()
+                dismiss()
+            }
+        } message: {
+            if let playerState = gameManager.currentPlayerState,
+               let game = gameManager.currentGame {
+                let timeText: String = {
+                    guard let start = game.startedAt, let end = game.completedAt else { return "" }
+                    let elapsed = Int(end.timeIntervalSince(start))
+                    let minutes = elapsed / 60
+                    let seconds = elapsed % 60
+                    return "\nTime: \(String(format: "%02d:%02d", minutes, seconds))"
+                }()
+                Text("Final Score: \(playerState.score)\nCorrect: \(playerState.correctGuesses) | Incorrect: \(playerState.incorrectGuesses)\(timeText)")
+            } else {
+                Text("Congratulations!")
+            }
+        }
+        .onChange(of: gameManager.currentGame?.status) { _, newStatus in
+            if newStatus == .completed {
+                showingCompletionAlert = true
+            }
+        }
+        .onChange(of: gameManager.isGameActive) { oldValue, newValue in
+            // Also trigger on isGameActive changing from true to false (game ended)
+            if oldValue && !newValue && gameManager.currentGame?.status == .completed {
+                showingCompletionAlert = true
+            }
+        }
+        .onAppear {
+            // Immediately sync when the game view appears
+            if !isViewingCompleted {
+                gameManager.triggerSync()
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Sync immediately when returning from background
+            if newPhase == .active && !isViewingCompleted {
+                gameManager.triggerSync()
             }
         }
     }
@@ -326,10 +479,10 @@ struct NumberButton: View {
     var body: some View {
         Button(action: action) {
             Text("\(number)")
-                .font(.title)
+                .font(.title3)
                 .bold()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .aspectRatio(1, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
                 .background(isSelected ? Color.blue : Color(.systemGray5))
                 .foregroundColor(isSelected ? .white : .primary)
                 .cornerRadius(8)

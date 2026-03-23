@@ -11,6 +11,10 @@ struct SudokuGridView: View {
     let board: SudokuBoard
     let selectedCell: (row: Int, col: Int)?
     let onCellTap: (Int, Int) -> Void
+    let currentPlayerColor: Color
+    let cellSelections: [String: [PlayerColor]]  // "row-col" → colors of other players selecting that cell
+    let colorMap: [String: PlayerColor]           // playerRecordName → assigned color
+    @Binding var cellEffect: CellEffect?
     
     var body: some View {
         GeometryReader { geometry in
@@ -26,20 +30,55 @@ struct SudokuGridView: View {
                 // Cells
                 ForEach(0..<9, id: \.self) { row in
                     ForEach(0..<9, id: \.self) { col in
+                        let key = "\(row)-\(col)"
+                        let otherSelectingColors = cellSelections[key] ?? []
+                        let completedByColor: Color? = {
+                            guard let completedBy = board[row, col].completedBy,
+                                  let playerColor = colorMap[completedBy] else { return nil }
+                            return playerColor.color
+                        }()
+                        
                         SudokuCellView(
                             cell: board[row, col],
                             isSelected: selectedCell?.row == row && selectedCell?.col == col,
                             isInSameRow: selectedCell?.row == row,
                             isInSameCol: selectedCell?.col == col,
-                            isInSameBox: isInSameBox(row: row, col: col, selectedRow: selectedCell?.row, selectedCol: selectedCell?.col)
+                            isInSameBox: isInSameBox(row: row, col: col, selectedRow: selectedCell?.row, selectedCol: selectedCell?.col),
+                            currentPlayerColor: currentPlayerColor,
+                            otherSelectingColors: otherSelectingColors,
+                            completedByColor: completedByColor
                         )
                         .frame(width: cellSize, height: cellSize)
-                        .position(x: CGFloat(col) * cellSize + cellSize / 2,
-                                y: CGFloat(row) * cellSize + cellSize / 2)
+                        .contentShape(Rectangle())  // Makes entire cell area tappable
+                        .position(
+                            x: CGFloat(col) * cellSize + cellSize / 2,
+                            y: CGFloat(row) * cellSize + cellSize / 2
+                        )
                         .onTapGesture {
                             onCellTap(row, col)
                         }
                     }
+                }
+                
+                // Cell effect overlay
+                if let effect = cellEffect {
+                    let x = CGFloat(effect.col) * cellSize + cellSize / 2
+                    let y = CGFloat(effect.row) * cellSize + cellSize / 2
+                    
+                    Group {
+                        switch effect.kind {
+                        case .correct:
+                            CorrectCellEffect(color: effect.color, cellSize: cellSize) {
+                                cellEffect = nil
+                            }
+                        case .incorrect:
+                            IncorrectCellEffect(value: effect.value, color: effect.color, cellSize: cellSize) {
+                                cellEffect = nil
+                            }
+                        }
+                    }
+                    .id(effect.id)
+                    .position(x: x, y: y)
                 }
             }
         }
@@ -89,6 +128,9 @@ struct SudokuCellView: View {
     let isInSameRow: Bool
     let isInSameCol: Bool
     let isInSameBox: Bool
+    let currentPlayerColor: Color
+    let otherSelectingColors: [PlayerColor]
+    let completedByColor: Color?
     
     var body: some View {
         ZStack {
@@ -100,7 +142,7 @@ struct SudokuCellView: View {
                 Text("\(value)")
                     .font(.title)
                     .bold(cell.isFixed)
-                    .foregroundColor(cell.isFixed ? .primary : .blue)
+                    .foregroundColor(cell.isFixed ? .primary : (completedByColor ?? currentPlayerColor))
             } else if !cell.notes.isEmpty {
                 // Show notes
                 NotesView(notes: cell.notes)
@@ -109,12 +151,150 @@ struct SudokuCellView: View {
     }
     
     private var backgroundColor: Color {
+        var highlights: [Color] = []
+        
+        // Current player's own selection
         if isSelected {
-            return Color.blue.opacity(0.3)
-        } else if isInSameRow || isInSameCol || isInSameBox {
+            highlights.append(currentPlayerColor.opacity(0.3))
+        }
+        
+        // Other players' selections (semi-transparent)
+        for playerColor in otherSelectingColors {
+            highlights.append(playerColor.color.opacity(0.3))
+        }
+        
+        // If any highlights exist, blend them
+        if !highlights.isEmpty {
+            return Color.blend(highlights)
+        }
+        
+        // Same row/col/box as selected cell
+        if isInSameRow || isInSameCol || isInSameBox {
             return Color(.systemGray6).opacity(0.5)
-        } else {
-            return Color.clear
+        }
+        
+        return Color.clear
+    }
+}
+
+// MARK: - Cell Effects
+
+/// Overlay that plays a bright flash and sparkle particles for a correct guess
+struct CorrectCellEffect: View {
+    let color: Color
+    let cellSize: CGFloat
+    var onComplete: () -> Void = {}
+    
+    @State private var flash = false
+    @State private var sparkles: [Sparkle] = []
+    @State private var sparksVisible = true
+    
+    struct Sparkle: Identifiable {
+        let id = UUID()
+        var x: CGFloat
+        var y: CGFloat
+        var angle: Double  // direction of travel in radians
+        var speed: CGFloat
+        var size: CGFloat
+    }
+    
+    var body: some View {
+        ZStack {
+            // Bright flash fill
+            RoundedRectangle(cornerRadius: 4)
+                .fill(color.opacity(flash ? 0.0 : 0.6))
+                .frame(width: cellSize, height: cellSize)
+            
+            // Sparkle particles
+            if sparksVisible {
+                ForEach(sparkles) { spark in
+                    Circle()
+                        .fill(color)
+                        .frame(width: spark.size, height: spark.size)
+                        .offset(x: spark.x, y: spark.y)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .onAppear {
+            // Generate random sparkle particles
+            sparkles = (0..<8).map { _ in
+                let angle = Double.random(in: 0...(2 * .pi))
+                return Sparkle(
+                    x: 0, y: 0,
+                    angle: angle,
+                    speed: CGFloat.random(in: 20...45),
+                    size: CGFloat.random(in: 3...6)
+                )
+            }
+            
+            // Animate flash out
+            withAnimation(.easeOut(duration: 0.4)) {
+                flash = true
+            }
+            
+            // Animate sparkles outward
+            withAnimation(.easeOut(duration: 0.5)) {
+                sparkles = sparkles.map { spark in
+                    var s = spark
+                    s.x = cos(spark.angle) * spark.speed
+                    s.y = sin(spark.angle) * spark.speed
+                    s.size = 1
+                    return s
+                }
+            }
+            
+            // Remove after animation completes
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                sparksVisible = false
+                onComplete()
+            }
+        }
+    }
+}
+
+/// Overlay that briefly shows the wrong digit then blinks and fades it away
+struct IncorrectCellEffect: View {
+    let value: Int
+    let color: Color
+    let cellSize: CGFloat
+    var onComplete: () -> Void = {}
+    
+    @State private var opacity: Double = 1.0
+    @State private var shakeOffset: CGFloat = 0
+    @State private var bgOpacity: Double = 0.4
+    
+    var body: some View {
+        ZStack {
+            // Red tinted background
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color.red.opacity(bgOpacity))
+                .frame(width: cellSize, height: cellSize)
+            
+            // The wrong digit
+            Text("\(value)")
+                .font(.title)
+                .foregroundColor(.red)
+                .opacity(opacity)
+                .offset(x: shakeOffset)
+        }
+        .allowsHitTesting(false)
+        .onAppear {
+            // Quick shake
+            withAnimation(.linear(duration: 0.06).repeatCount(5, autoreverses: true)) {
+                shakeOffset = 4
+            }
+            
+            // Fade out the digit and background
+            withAnimation(.easeOut(duration: 0.6).delay(0.3)) {
+                opacity = 0
+                bgOpacity = 0
+            }
+            
+            // Clean up
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                onComplete()
+            }
         }
     }
 }
@@ -148,7 +328,11 @@ struct NotesView: View {
     SudokuGridView(
         board: SudokuBoard(),
         selectedCell: (0, 0),
-        onCellTap: { _, _ in }
+        onCellTap: { _, _ in },
+        currentPlayerColor: PlayerColor.coral.color,
+        cellSelections: [:],
+        colorMap: [:],
+        cellEffect: .constant(nil)
     )
     .frame(width: 350, height: 350)
     .padding()

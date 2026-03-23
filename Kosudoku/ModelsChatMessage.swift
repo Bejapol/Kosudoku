@@ -27,6 +27,12 @@ final class ChatMessage {
     // For group chats outside of games
     var groupChatID: String?
     
+    // A stable identifier derived from content, used for SwiftUI ForEach identity.
+    // This prevents view recreation when polling replaces ChatMessage objects.
+    var stableID: String {
+        "\(senderRecordName)|\(content)|\(Int(timestamp.timeIntervalSince1970))"
+    }
+    
     init(senderRecordName: String, senderUsername: String, content: String, messageType: ChatMessageType = .text, gameSession: GameSession? = nil, groupChatID: String? = nil) {
         self.id = UUID()
         self.senderRecordName = senderRecordName

@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import UIKit
 
 @main
 struct KosudokuApp: App {
@@ -65,9 +66,11 @@ struct KosudokuApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .modelContainer(sharedModelContainer)  // ← Moved here from WindowGroup
+                .modelContainer(sharedModelContainer)
                 .task {
                     await authenticateUser()
+                    // Register for remote notifications so CloudKit subscriptions can deliver push alerts
+                    UIApplication.shared.registerForRemoteNotifications()
                 }
         }
     }

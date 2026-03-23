@@ -16,6 +16,8 @@ struct NewGameView: View {
     @State private var isCreating = false
     @State private var createdGameManager: GameManager?
     @State private var showingGameView = false
+    @State private var errorMessage: String?
+    @State private var showingError = false
     @Query private var friendships: [Friendship]
     
     var body: some View {
@@ -36,17 +38,18 @@ struct NewGameView: View {
                             .foregroundColor(.secondary)
                     } else {
                         ForEach(acceptedFriends, id: \.id) { friendship in
+                            let friendRecord = otherPersonRecordName(friendship)
                             HStack {
                                 Text(friendship.friendDisplayName)
                                 Spacer()
-                                if selectedFriends.contains(friendship.friendRecordName) {
+                                if selectedFriends.contains(friendRecord) {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundColor(.blue)
                                 }
                             }
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                toggleFriendSelection(friendship.friendRecordName)
+                                toggleFriendSelection(friendRecord)
                             }
                         }
                     }
@@ -84,11 +87,32 @@ struct NewGameView: View {
                     GameView(gameManager: manager)
                 }
             }
+            .alert("Error Creating Game", isPresented: $showingError) {
+                Button("OK") {
+                    errorMessage = nil
+                }
+            } message: {
+                if let errorMessage {
+                    Text(errorMessage)
+                }
+            }
         }
     }
     
+    private let cloudKitService = CloudKitService.shared
+    
     private var acceptedFriends: [Friendship] {
         friendships.filter { $0.status == .accepted }
+    }
+    
+    /// Get the record name of the "other person" in a friendship
+    private func otherPersonRecordName(_ friendship: Friendship) -> String {
+        let currentUser = cloudKitService.currentUserRecordName ?? ""
+        if friendship.userRecordName == currentUser {
+            return friendship.friendRecordName
+        } else {
+            return friendship.userRecordName
+        }
     }
     
     private func toggleFriendSelection(_ recordName: String) {
@@ -102,15 +126,31 @@ struct NewGameView: View {
     private func createGame() async {
         isCreating = true
         
+        print("🎮 Creating new game with difficulty: \(selectedDifficulty)")
+        print("🎮 Invited players: \(selectedFriends)")
+        
         do {
             let gameManager = GameManager(modelContext: modelContext)
+            
+            print("🎮 Calling createGame...")
             try await gameManager.createGame(
                 difficulty: selectedDifficulty,
                 invitedPlayers: Array(selectedFriends)
             )
+            print("✅ Game created successfully")
             
-            // Start the game automatically
-            try await gameManager.startGame()
+            if selectedFriends.isEmpty {
+                // Solo game - start immediately
+                print("🎮 Starting solo game...")
+                try await gameManager.startGame()
+                print("✅ Game started successfully")
+            } else {
+                // Multiplayer game - start immediately for the host too
+                // Friends will join the already-active game
+                print("🎮 Starting multiplayer game...")
+                try await gameManager.startGame()
+                print("✅ Multiplayer game started, waiting for friends to join")
+            }
             
             // Store the game manager and show the game view
             createdGameManager = gameManager
@@ -121,8 +161,21 @@ struct NewGameView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 showingGameView = true
             }
+        } catch let error as GameError {
+            print("❌ GameError creating game: \(error.localizedDescription)")
+            errorMessage = error.localizedDescription
+            showingError = true
+            isCreating = false
+        } catch let error as CloudKitError {
+            print("❌ CloudKitError creating game: \(error.localizedDescription)")
+            errorMessage = "CloudKit error: \(error.localizedDescription)\n\nMake sure you're signed into iCloud in Settings."
+            showingError = true
+            isCreating = false
         } catch {
-            print("Error creating game: \(error)")
+            print("❌ Unknown error creating game: \(error)")
+            print("❌ Error type: \(type(of: error))")
+            errorMessage = "Failed to create game: \(error.localizedDescription)\n\nPlease check your iCloud connection."
+            showingError = true
             isCreating = false
         }
     }

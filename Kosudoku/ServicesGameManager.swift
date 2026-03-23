@@ -10,8 +10,24 @@ import SwiftData
 import SwiftUI
 import CloudKit
 
+/// Represents a visual effect to play on a cell after a move
+struct CellEffect: Equatable {
+    enum Kind { case correct, incorrect }
+    let row: Int
+    let col: Int
+    let kind: Kind
+    let value: Int        // the digit that was guessed
+    let color: Color      // the player's color
+    let id: UUID = UUID() // unique so SwiftUI detects each new effect
+    
+    static func == (lhs: CellEffect, rhs: CellEffect) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 /// Manages the current game state and coordinates between local and CloudKit
 @Observable
+@MainActor
 class GameManager {
     var currentGame: GameSession?
     var currentPlayerState: PlayerGameState?
@@ -19,9 +35,20 @@ class GameManager {
     var solutionBoard: SudokuBoard?
     var otherPlayers: [PlayerGameState] = []
     
-    var selectedCell: (row: Int, col: Int)?
+    var selectedCell: (row: Int, col: Int)? {
+        didSet {
+            // Push selection change to CloudKit (debounced via the flag)
+            selectionDirty = true
+        }
+    }
     var isGameActive = false
     var gameStartTime: Date?
+    var playerColorMap: [String: PlayerColor] = [:]
+    var lastCellEffect: CellEffect?
+    
+    private var selectionDirty = false
+    private var isSyncing = false
+    private var isMakingMove = false
     
     private let cloudKit = CloudKitService.shared
     private let modelContext: ModelContext
@@ -37,61 +64,132 @@ class GameManager {
     
     /// Create a new game session
     func createGame(difficulty: DifficultyLevel, invitedPlayers: [String] = []) async throws {
+        print("🎮 GameManager.createGame called")
+        
         guard let hostRecordName = cloudKit.currentUserRecordName else {
+            print("❌ Not authenticated - no user record name")
+            print("   isAuthenticated: \(cloudKit.isAuthenticated)")
+            print("   currentUserProfile: \(cloudKit.currentUserProfile?.username ?? "nil")")
             throw GameError.notAuthenticated
         }
         
+        print("✅ User authenticated: \(hostRecordName)")
+        
         // Generate puzzle
+        print("🎮 Generating puzzle...")
         let (puzzle, solution) = SudokuGenerator.generatePuzzle(difficulty: difficulty)
+        print("✅ Puzzle generated")
         
         // Create game session
+        print("🎮 Creating game session object...")
         let session = GameSession(
             hostRecordName: hostRecordName,
             difficulty: difficulty,
             puzzleData: puzzle.toJSONString(),
-            solutionData: solution.toJSONString()
+            solutionData: solution.toJSONString(),
+            invitedPlayers: invitedPlayers
         )
+        print("✅ Game session object created")
         
         // Save to CloudKit
-        try await cloudKit.createGameSession(session)
+        print("🎮 Saving to CloudKit...")
+        do {
+            try await cloudKit.createGameSession(session)
+            print("✅ Saved to CloudKit, record name: \(session.cloudKitRecordName ?? "nil")")
+        } catch {
+            print("❌ Failed to save to CloudKit: \(error)")
+            print("   Error type: \(type(of: error))")
+            throw error
+        }
         
         // Save locally
+        print("🎮 Saving locally to SwiftData...")
         modelContext.insert(session)
-        try modelContext.save()
+        do {
+            try modelContext.save()
+            print("✅ Saved locally")
+        } catch {
+            print("❌ Failed to save locally: \(error)")
+            throw error
+        }
         
         // Join the game as host
+        print("🎮 Joining game as host...")
         try await joinGame(session)
+        print("✅ Joined game")
         
         currentGame = session
         currentBoard = puzzle
         solutionBoard = solution
+        
+        print("✅ GameManager.createGame completed successfully")
     }
     
     // MARK: - Game Join/Leave
     
-    /// Join an existing game
+    /// Join an existing game (or rejoin if already joined)
     func joinGame(_ session: GameSession) async throws {
         guard let playerRecordName = cloudKit.currentUserRecordName,
               let username = cloudKit.currentUserProfile?.username else {
             throw GameError.notAuthenticated
         }
         
-        // Create player state
-        let playerState = PlayerGameState(
-            playerRecordName: playerRecordName,
-            playerUsername: username,
-            gameSession: session
-        )
+        var playerState: PlayerGameState
         
-        // Save to CloudKit
+        // Check if we already have a PlayerGameState for this game in CloudKit
         if let gameRecordName = session.cloudKitRecordName {
-            try await cloudKit.savePlayerState(playerState, gameRecordName: gameRecordName)
+            let existingRecords = try await cloudKit.fetchPlayerStates(gameRecordName: gameRecordName)
+            if let existingRecord = existingRecords.first(where: {
+                ($0["playerRecordName"] as? String) == playerRecordName
+            }) {
+                // Reuse existing player state
+                playerState = PlayerGameState(
+                    playerRecordName: playerRecordName,
+                    playerUsername: username,
+                    gameSession: session
+                )
+                playerState.cloudKitRecordName = existingRecord.recordID.recordName
+                playerState.score = (existingRecord["score"] as? Int) ?? 0
+                playerState.correctGuesses = (existingRecord["correctGuesses"] as? Int) ?? 0
+                playerState.incorrectGuesses = (existingRecord["incorrectGuesses"] as? Int) ?? 0
+                playerState.cellsCompleted = (existingRecord["cellsCompleted"] as? [String]) ?? []
+                playerState.currentBoardData = (existingRecord["currentBoardData"] as? String) ?? "{}"
+                playerState.joinedAt = (existingRecord["joinedAt"] as? Date) ?? Date()
+                playerState.lastMoveAt = existingRecord["lastMoveAt"] as? Date
+                print("🎮 Found existing PlayerGameState in CloudKit, reusing")
+            } else {
+                // Create new player state
+                playerState = PlayerGameState(
+                    playerRecordName: playerRecordName,
+                    playerUsername: username,
+                    gameSession: session
+                )
+                try await cloudKit.savePlayerState(playerState, gameRecordName: gameRecordName)
+                print("🎮 Created new PlayerGameState in CloudKit")
+            }
             
-            // Subscribe to game updates (non-critical, will fall back to polling if it fails)
+            // Subscribe to game updates (non-critical)
             try? await cloudKit.subscribeToGameUpdates(gameRecordName: gameRecordName)
+            
+            // If the game is already active, fetch the latest puzzleData from CloudKit
+            if session.status == .active {
+                if let record = try? await cloudKit.fetchGameSession(recordName: gameRecordName),
+                   let latestPuzzleData = record["puzzleData"] as? String {
+                    session.puzzleData = latestPuzzleData
+                }
+            }
+        } else {
+            // No CloudKit record name — create locally only
+            playerState = PlayerGameState(
+                playerRecordName: playerRecordName,
+                playerUsername: username,
+                gameSession: session
+            )
         }
         
-        // Save locally
+        // Always insert the player state into the context so SwiftData
+        // tracks mutations made during makeMove (score, cellsCompleted, etc.).
+        // SwiftData handles duplicates via the @Attribute(.unique) id.
         modelContext.insert(playerState)
         try modelContext.save()
         
@@ -104,6 +202,16 @@ class GameManager {
         }
         if let solution = SudokuBoard.fromJSONString(session.solutionData) {
             solutionBoard = solution
+        }
+        
+        // Compute player color assignments
+        recomputeColorMap()
+        
+        // If the game is already active, start the sync timer
+        if session.status == .active {
+            gameStartTime = session.startedAt ?? Date()
+            isGameActive = true
+            startSyncTimer()
         }
     }
     
@@ -146,11 +254,20 @@ class GameManager {
     
     /// Make a move on the board
     func makeMove(row: Int, col: Int, value: Int) async throws {
+        guard !isMakingMove else { return }
+        isMakingMove = true
+        defer { isMakingMove = false }
+        
         guard let game = currentGame,
               let playerState = currentPlayerState,
               var board = currentBoard,
               let solution = solutionBoard else {
             throw GameError.noActiveGame
+        }
+        
+        // Validate bounds
+        guard row >= 0, row < 9, col >= 0, col < 9, value >= 1, value <= 9 else {
+            return
         }
         
         // Check if cell is fixed
@@ -186,20 +303,34 @@ class GameManager {
             // Update puzzle data in game session
             game.puzzleData = board.toJSONString()
             
+            // Play correct chime and trigger visual effect
+            GameSoundManager.shared.playCorrectSound()
+            let effectColor = playerColorMap[playerState.playerRecordName]?.color ?? PlayerColor.coral.color
+            lastCellEffect = CellEffect(row: row, col: col, kind: .correct, value: value, color: effectColor)
+            
         } else {
             // Incorrect guess
             playerState.incorrectGuesses += 1
             playerState.score += ScoringSystem.pointsForIncorrectGuess()
             playerState.lastMoveAt = Date()
+            
+            // Play incorrect buzzer and trigger visual effect
+            GameSoundManager.shared.playIncorrectSound()
+            let effectColor = playerColorMap[playerState.playerRecordName]?.color ?? PlayerColor.coral.color
+            lastCellEffect = CellEffect(row: row, col: col, kind: .incorrect, value: value, color: effectColor)
         }
         
         // Save locally
         try modelContext.save()
         
-        // Sync to CloudKit
+        // Sync to CloudKit (non-critical — don't crash if CloudKit fails)
         if let gameRecordName = game.cloudKitRecordName {
-            try await cloudKit.savePlayerState(playerState, gameRecordName: gameRecordName)
-            try await cloudKit.updateGameSession(game)
+            do {
+                try await cloudKit.savePlayerState(playerState, gameRecordName: gameRecordName)
+                try await cloudKit.updateGameSession(game)
+            } catch {
+                print("⚠️ CloudKit sync after move failed (will retry on next sync): \(error.localizedDescription)")
+            }
         }
         
         // Check if board is complete
@@ -279,14 +410,18 @@ class GameManager {
             throw GameError.noActiveGame
         }
         
+        // Guard against running twice (e.g., from both makeMove and syncGameState)
+        guard game.status != .completed else { return }
+        
         game.status = .completed
         game.completedAt = Date()
         isGameActive = false
         
-        // Calculate final score
+        // Calculate final score for this game only
+        let gameScore: Int
         if let startTime = gameStartTime {
             let timeElapsed = Date().timeIntervalSince(startTime)
-            let finalScore = ScoringSystem.calculateFinalScore(
+            gameScore = ScoringSystem.calculateFinalScore(
                 correctGuesses: playerState.correctGuesses,
                 incorrectGuesses: playerState.incorrectGuesses,
                 cellsCompleted: playerState.cellsCompleted.count,
@@ -294,34 +429,58 @@ class GameManager {
                 timeElapsed: timeElapsed,
                 finishPosition: 1 // TODO: Determine actual position
             )
-            playerState.score = finalScore
-            
-            // Update user profile
-            if let profile = cloudKit.currentUserProfile {
-                profile.totalScore += finalScore
-                profile.gamesPlayed += 1
-                profile.gamesWon += 1
-                try await cloudKit.saveUserProfile(profile)
-            }
+        } else {
+            // Fallback: use the accumulated score from gameplay
+            gameScore = playerState.score
+        }
+        playerState.score = gameScore
+        
+        // Update user profile stats (add only the game score, not the total)
+        if let profile = cloudKit.currentUserProfile {
+            profile.totalScore += gameScore
+            profile.gamesPlayed += 1
+            profile.gamesWon += 1
         }
         
-        // Save locally
+        // Save locally first so stats persist regardless of CloudKit
         try modelContext.save()
         
-        // Update CloudKit
-        try await cloudKit.updateGameSession(game)
+        // Sync to CloudKit (don't let failures lose local data)
+        if let profile = cloudKit.currentUserProfile {
+            try? await cloudKit.saveUserProfile(profile)
+        }
+        try? await cloudKit.updateGameSession(game)
         
         // Stop sync timer
         stopSyncTimer()
     }
     
+    // MARK: - Player Colors
+    
+    private func recomputeColorMap() {
+        var all: [PlayerGameState] = otherPlayers
+        if let current = currentPlayerState {
+            all.append(current)
+        }
+        playerColorMap = PlayerColorAssigner.assign(players: all)
+    }
+    
     // MARK: - Sync
     
     private func startSyncTimer() {
-        syncTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        // Stop any existing timer first
+        stopSyncTimer()
+        syncTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task {
                 await self?.syncGameState()
             }
+        }
+    }
+    
+    /// Trigger an immediate sync (e.g., when the game view appears)
+    func triggerSync() {
+        Task {
+            await syncGameState()
         }
     }
     
@@ -331,27 +490,59 @@ class GameManager {
     }
     
     private func syncGameState() async {
+        // Guard against overlapping sync calls
+        guard !isSyncing else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+        
         guard let game = currentGame,
               let gameRecordName = game.cloudKitRecordName,
               let currentPlayerRecordName = cloudKit.currentUserRecordName else {
             return
         }
         
+        // Push current player's selected cell to CloudKit only when it changed
+        // and no move is currently being saved (to avoid conflicting writes)
+        if selectionDirty, !isMakingMove,
+           let playerState = currentPlayerState,
+           playerState.cloudKitRecordName != nil {
+            playerState.selectedRow = selectedCell?.row
+            playerState.selectedCol = selectedCell?.col
+            try? await cloudKit.savePlayerState(playerState, gameRecordName: gameRecordName)
+            selectionDirty = false
+        }
+        
         do {
-            // Fetch all player states for this game from CloudKit
-            let records = try await cloudKit.fetchPlayerStates(gameRecordName: gameRecordName)
+            // Fetch game session and player states in parallel for faster sync
+            async let gameRecordTask = cloudKit.fetchGameSession(recordName: gameRecordName)
+            async let playerRecordsTask = cloudKit.fetchPlayerStates(gameRecordName: gameRecordName)
             
-            // Parse and update player states
+            let gameRecord = try await gameRecordTask
+            let cloudPuzzleData = gameRecord["puzzleData"] as? String
+            let records = try await playerRecordsTask
+            
+            // Parse and update player states (deduplicate by playerRecordName,
+            // keeping only the most recently updated record for each player)
             var updatedOtherPlayers: [PlayerGameState] = []
-            var latestBoardData: String?
+            var seenPlayers: Set<String> = []
             
-            for record in records {
+            // Sort records so the most recently modified comes first
+            let sortedRecords = records.sorted {
+                ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast)
+            }
+            
+            for record in sortedRecords {
                 guard let playerRecordName = record["playerRecordName"] as? String else {
                     continue
                 }
                 
                 // Skip current player
                 if playerRecordName == currentPlayerRecordName {
+                    continue
+                }
+                
+                // Skip duplicates — keep only the first (most recent) record per player
+                guard seenPlayers.insert(playerRecordName).inserted else {
                     continue
                 }
                 
@@ -370,59 +561,96 @@ class GameManager {
                 playerState.cellsCompleted = (record["cellsCompleted"] as? [String]) ?? []
                 playerState.joinedAt = (record["joinedAt"] as? Date) ?? Date()
                 playerState.lastMoveAt = record["lastMoveAt"] as? Date
+                playerState.selectedRow = record["selectedRow"] as? Int
+                playerState.selectedCol = record["selectedCol"] as? Int
                 
                 updatedOtherPlayers.append(playerState)
-                
-                // Track the most recent board update
-                if let lastMove = playerState.lastMoveAt {
-                    if latestBoardData == nil || lastMove > (currentPlayerState?.lastMoveAt ?? Date.distantPast) {
-                        latestBoardData = playerState.currentBoardData
-                    }
-                }
             }
             
-            // Update other players array
+            // Update other players array and recompute color assignments
             await MainActor.run {
                 self.otherPlayers = updatedOtherPlayers
+                self.recomputeColorMap()
             }
             
-            // Update current board with latest moves from other players
-            if let latestData = latestBoardData,
-               let updatedBoard = SudokuBoard.fromJSONString(latestData) {
+            // Merge the authoritative board from CloudKit with the local board.
+            // The CloudKit GameSession puzzleData is updated by whichever player
+            // makes a correct move, so it always reflects the latest state.
+            if let latestData = cloudPuzzleData,
+               let cloudBoard = SudokuBoard.fromJSONString(latestData) {
                 await MainActor.run {
-                    // Merge boards - prefer cells that have been filled by any player
                     if var currentBoardState = self.currentBoard {
                         for row in 0..<9 {
                             for col in 0..<9 {
-                                let updatedCell = updatedBoard[row, col]
-                                let currentCell = currentBoardState[row, col]
+                                let cloudCell = cloudBoard[row, col]
+                                let localCell = currentBoardState[row, col]
                                 
-                                // If the updated board has a value and current doesn't, use it
-                                if updatedCell.value != nil && currentCell.value == nil {
-                                    currentBoardState[row, col] = updatedCell
+                                // If the cloud board has a value that the local board doesn't, use it
+                                if cloudCell.value != nil && localCell.value == nil {
+                                    currentBoardState[row, col] = cloudCell
                                 }
                                 // If someone else completed this cell, update the completion info
-                                else if let completedBy = updatedCell.completedBy,
-                                        completedBy != currentPlayerRecordName {
+                                else if let completedBy = cloudCell.completedBy,
+                                        completedBy != currentPlayerRecordName,
+                                        localCell.completedBy == nil {
                                     currentBoardState[row, col].completedBy = completedBy
                                 }
                             }
                         }
                         self.currentBoard = currentBoardState
-                        
-                        // Also update the game session's puzzle data
                         game.puzzleData = currentBoardState.toJSONString()
                     }
                 }
             }
             
-            // Check if game should be completed
+            // Check game status from CloudKit (e.g. other player completed it)
+            if let statusRaw = gameRecord["status"] as? String,
+               let status = GameStatus(rawValue: statusRaw),
+               status == .completed,
+               game.status != .completed {
+                game.status = .completed
+                game.completedAt = gameRecord["completedAt"] as? Date
+                
+                // Update this player's profile stats (the completing player
+                // already updated theirs in completeGame())
+                if let playerState = currentPlayerState,
+                   let profile = cloudKit.currentUserProfile {
+                    // Calculate final score for this player
+                    if let startTime = gameStartTime {
+                        let timeElapsed = Date().timeIntervalSince(startTime)
+                        let gameScore = ScoringSystem.calculateFinalScore(
+                            correctGuesses: playerState.correctGuesses,
+                            incorrectGuesses: playerState.incorrectGuesses,
+                            cellsCompleted: playerState.cellsCompleted.count,
+                            difficulty: game.difficulty,
+                            timeElapsed: timeElapsed,
+                            finishPosition: nil
+                        )
+                        playerState.score = gameScore
+                    }
+                    
+                    profile.totalScore += playerState.score
+                    profile.gamesPlayed += 1
+                    // Don't count as a win — the other player completed it
+                    
+                    try? await cloudKit.saveUserProfile(profile)
+                }
+                
+                try? modelContext.save()
+                await MainActor.run {
+                    self.isGameActive = false
+                }
+                stopSyncTimer()
+                return
+            }
+            
+            // Check if board is complete locally
             if let board = currentBoard, SudokuGenerator.isBoardComplete(board) {
                 try await completeGame()
             }
             
         } catch {
-            print("Error syncing game state: \(error.localizedDescription)")
+            print("❌ Error syncing game state: \(error)")
         }
     }
     
@@ -462,6 +690,23 @@ class GameManager {
         
         // Clean up
         leaveGame()
+    }
+    
+    /// Load a completed game for viewing (read-only, no sync timer)
+    func viewCompletedGame(_ session: GameSession) {
+        currentGame = session
+        currentPlayerState = nil
+        otherPlayers = []
+        selectedCell = nil
+        isGameActive = false
+        gameStartTime = session.startedAt
+        
+        if let board = SudokuBoard.fromJSONString(session.puzzleData) {
+            currentBoard = board
+        }
+        if let solution = SudokuBoard.fromJSONString(session.solutionData) {
+            solutionBoard = solution
+        }
     }
     
     func leaveGame() {

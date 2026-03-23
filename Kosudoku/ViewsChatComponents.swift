@@ -15,6 +15,9 @@ struct ChatMessageBubble: View {
     @State private var profileImageData: Data?
     @State private var cloudKitService = CloudKitService.shared
     
+    // Static cache so profile photos persist across view recreations during polling
+    private static var photoCache: [String: Data] = [:]
+    
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             if !isCurrentUser {
@@ -61,18 +64,32 @@ struct ChatMessageBubble: View {
         }
     }
     
-    // Fetch profile photo from CloudKit
+    // Fetch profile photo from CloudKit, using a static cache to avoid refetching
     private func loadProfilePhoto() async {
-        // If it's the current user, use their local profile
-        if isCurrentUser, let currentProfile = cloudKitService.currentUserProfile {
-            profileImageData = currentProfile.avatarImageData
+        // Check static cache first
+        if let cached = Self.photoCache[message.senderRecordName] {
+            if profileImageData == nil {
+                profileImageData = cached
+            }
             return
         }
         
-        // For other users, fetch from CloudKit by record name
+        // If it's the current user, use their local profile
+        if isCurrentUser, let currentProfile = cloudKitService.currentUserProfile {
+            profileImageData = currentProfile.avatarImageData
+            if let data = currentProfile.avatarImageData {
+                Self.photoCache[message.senderRecordName] = data
+            }
+            return
+        }
+        
+        // For other users, look up by ownerRecordName (the iCloud user record name)
         do {
-            if let profile = try await cloudKitService.fetchUserProfileObject(recordName: message.senderRecordName) {
+            if let profile = try await cloudKitService.fetchUserProfileByOwner(ownerRecordName: message.senderRecordName) {
                 profileImageData = profile.avatarImageData
+                if let data = profile.avatarImageData {
+                    Self.photoCache[message.senderRecordName] = data
+                }
             }
         } catch {
             print("Failed to load profile photo for \(message.senderUsername): \(error)")

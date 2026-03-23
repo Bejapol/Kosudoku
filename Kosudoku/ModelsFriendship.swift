@@ -24,6 +24,7 @@ final class Friendship {
     var status: FriendshipStatus
     var createdAt: Date
     var acceptedAt: Date?
+    var cloudKitRecordName: String? // CloudKit record name for updating/deleting
     
     init(userRecordName: String, friendRecordName: String, friendUsername: String, friendDisplayName: String, status: FriendshipStatus = .pending) {
         self.id = UUID()

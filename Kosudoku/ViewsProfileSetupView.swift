@@ -46,55 +46,64 @@ struct ProfileSetupView: View {
                                             .font(.caption)
                                             .foregroundColor(.secondary)
                                     }
+                                    
+                                    Spacer()
+                                    
+                                    Text("Sign In")
+                                        .font(.subheadline)
+                                        .foregroundColor(.blue)
                                 }
                             }
                         }
                     }
                     
+                    if let error = errorMessage {
+                        Section {
+                            Text(error)
+                                .foregroundColor(.red)
+                        }
+                    }
+                } else {
+                    // Only show profile creation when no profile exists
+                    
+                    // Profile photo section
                     Section {
-                        Text("Or create a new profile below")
+                        HStack {
+                            Spacer()
+                            ProfilePhotoPicker(
+                                imageData: $profilePhotoData,
+                                size: 120,
+                                displayName: displayName
+                            )
+                            Spacer()
+                        }
+                        .padding(.vertical, 8)
+                    } header: {
+                        Text("New Profile Photo")
+                    } footer: {
+                        Text("Tap to add a photo or we'll generate one from your initials")
+                    }
+                    
+                    Section("New Profile Information") {
+                        TextField("Username", text: $username)
+                            .textContentType(.username)
+                            .autocapitalization(.none)
+                        
+                        TextField("Display Name", text: $displayName)
+                            .textContentType(.name)
+                    }
+                    
+                    Section {
+                        Text("Your username is how other players will find you. Your display name is what they'll see in games.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                }
-                
-                // Profile photo section
-                Section {
-                    HStack {
-                        Spacer()
-                        ProfilePhotoPicker(
-                            imageData: $profilePhotoData,
-                            size: 120,
-                            displayName: displayName.isEmpty ? "Your Name" : displayName
-                        )
-                        Spacer()
-                    }
-                    .padding(.vertical, 8)
-                } header: {
-                    Text("Profile Photo")
-                } footer: {
-                    Text("Tap to add a photo or we'll generate one from your initials")
-                }
-                
-                Section("Profile Information") {
-                    TextField("Username", text: $username)
-                        .textContentType(.username)
-                        .autocapitalization(.none)
                     
-                    TextField("Display Name", text: $displayName)
-                        .textContentType(.name)
-                }
-                
-                Section {
-                    Text("Your username is how other players will find you. Your display name is what they'll see in games.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                if let error = errorMessage {
-                    Section {
-                        Text(error)
-                            .foregroundColor(.red)
+                    if let error = errorMessage {
+                        Section {
+                            Text(error)
+                                .foregroundColor(.red)
+                        }
                     }
                 }
             }
@@ -111,12 +120,14 @@ struct ProfileSetupView: View {
                 }
                 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        Task {
-                            await createProfile()
+                    if existingProfiles.isEmpty {
+                        Button("Create") {
+                            Task {
+                                await createProfile()
+                            }
                         }
+                        .disabled(username.isEmpty || displayName.isEmpty || isCreating)
                     }
-                    .disabled(username.isEmpty || displayName.isEmpty || isCreating)
                 }
             }
             .overlay {

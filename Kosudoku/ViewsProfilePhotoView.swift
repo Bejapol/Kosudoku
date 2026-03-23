@@ -30,6 +30,17 @@ struct ProfilePhotoView: View {
                     .scaledToFill()
                     .frame(width: size, height: size)
                     .clipShape(Circle())
+            } else if displayName.isEmpty {
+                // No name yet — show a generic person icon
+                ZStack {
+                    Circle()
+                        .fill(Color(.systemGray4))
+                    
+                    Image(systemName: "person.fill")
+                        .font(.system(size: size * 0.4))
+                        .foregroundColor(.white)
+                }
+                .frame(width: size, height: size)
             } else {
                 // Fallback to initials
                 ZStack {
@@ -87,10 +98,19 @@ struct ProfilePhotoPicker: View {
     @Binding var imageData: Data?
     let size: CGFloat
     let displayName: String
+    let enableCropper: Bool // Add option to disable cropper for testing
     
     @State private var selectedItem: PhotosPickerItem?
-    @State private var showingCropper = false
-    @State private var selectedUIImage: UIImage?
+    @State private var cropperImage: IdentifiableImage?
+    @State private var showingError = false
+    @State private var errorMessage = ""
+    
+    init(imageData: Binding<Data?>, size: CGFloat, displayName: String, enableCropper: Bool = true) {
+        self._imageData = imageData
+        self.size = size
+        self.displayName = displayName
+        self.enableCropper = enableCropper
+    }
     
     var body: some View {
         PhotosPicker(selection: $selectedItem, matching: .images) {
@@ -112,25 +132,53 @@ struct ProfilePhotoPicker: View {
         }
         .onChange(of: selectedItem) { oldValue, newValue in
             Task {
-                if let data = try? await newValue?.loadTransferable(type: Data.self),
-                   let uiImage = UIImage(data: data) {
-                    selectedUIImage = uiImage
-                    showingCropper = true
-                }
-            }
-        }
-        .sheet(isPresented: $showingCropper) {
-            if let image = selectedUIImage {
-                ImageCropperView(image: image) { croppedImage in
-                    if let compressed = compressImage(croppedImage, maxSizeKB: 500) {
-                        imageData = compressed
+                guard let newValue else { return }
+                
+                do {
+                    if let data = try await newValue.loadTransferable(type: Data.self),
+                       let uiImage = UIImage(data: data) {
+                        if enableCropper {
+                            cropperImage = IdentifiableImage(image: uiImage)
+                        } else {
+                            if let compressed = compressImage(uiImage, maxSizeKB: 500) {
+                                imageData = compressed
+                            }
+                            selectedItem = nil
+                        }
+                    } else {
+                        errorMessage = "Failed to load image"
+                        showingError = true
+                        selectedItem = nil
                     }
-                }
-                .onDisappear {
-                    selectedUIImage = nil
+                } catch {
+                    errorMessage = "Error loading photo: \(error.localizedDescription)"
+                    showingError = true
                     selectedItem = nil
                 }
             }
+        }
+        .sheet(item: $cropperImage) { item in
+            ImageCropperView(
+                image: item.image,
+                onCrop: { croppedImage in
+                    if let compressed = compressImage(croppedImage, maxSizeKB: 500) {
+                        imageData = compressed
+                    }
+                    cropperImage = nil
+                    selectedItem = nil
+                },
+                onCancel: {
+                    cropperImage = nil
+                    selectedItem = nil
+                }
+            )
+        }
+        .alert("Error", isPresented: $showingError) {
+            Button("OK") {
+                errorMessage = ""
+            }
+        } message: {
+            Text(errorMessage)
         }
     }
     
@@ -149,106 +197,133 @@ struct ProfilePhotoPicker: View {
     }
 }
 
+/// Wrapper to make a UIImage usable with .sheet(item:)
+struct IdentifiableImage: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
 /// Simple image cropper for square profile photos
 struct ImageCropperView: View {
     let image: UIImage
     let onCrop: (UIImage) -> Void
+    let onCancel: () -> Void
     
     @State private var scale: CGFloat = 1.0
     @State private var lastScale: CGFloat = 1.0
     @State private var offset: CGSize = .zero
     @State private var lastOffset: CGSize = .zero
-    @State private var viewSize: CGSize = .zero
-    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         NavigationStack {
-            ZStack {
-                // Black background
-                Color.black
-                    .ignoresSafeArea()
+            GeometryReader { geometry in
+                let cropSize = min(geometry.size.width, geometry.size.height) - 80
                 
-                GeometryReader { geometry in
-                    let cropSize = min(geometry.size.width, geometry.size.height) - 80
+                ZStack {
+                    // Black background
+                    Color.black
+                        .ignoresSafeArea()
                     
-                    ZStack {
-                        // Image with gestures
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .scaleEffect(scale)
-                            .offset(offset)
-                            .gesture(
-                                MagnificationGesture()
-                                    .onChanged { value in
-                                        let newScale = lastScale * value
-                                        // Prevent scaling too small
-                                        scale = max(newScale, 0.5)
-                                    }
-                                    .onEnded { _ in
-                                        lastScale = scale
-                                    }
-                            )
-                            .simultaneousGesture(
-                                DragGesture()
-                                    .onChanged { value in
-                                        offset = CGSize(
-                                            width: lastOffset.width + value.translation.width,
-                                            height: lastOffset.height + value.translation.height
-                                        )
-                                    }
-                                    .onEnded { _ in
-                                        lastOffset = offset
-                                    }
-                            )
-                        
-                        // Crop overlay border
-                        Circle()
-                            .stroke(Color.white, lineWidth: 3)
-                            .frame(width: cropSize, height: cropSize)
-                            .shadow(color: .black.opacity(0.5), radius: 5)
-                            .allowsHitTesting(false)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onAppear {
-                        viewSize = geometry.size
-                    }
+                    // Image with gestures
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .scaleEffect(scale)
+                        .offset(offset)
+                        .gesture(
+                            MagnificationGesture()
+                                .onChanged { value in
+                                    let newScale = lastScale * value
+                                    scale = max(newScale, 0.5)
+                                }
+                                .onEnded { _ in
+                                    lastScale = scale
+                                }
+                        )
+                        .simultaneousGesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    offset = CGSize(
+                                        width: lastOffset.width + value.translation.width,
+                                        height: lastOffset.height + value.translation.height
+                                    )
+                                }
+                                .onEnded { _ in
+                                    lastOffset = offset
+                                }
+                        )
+                    
+                    // Crop overlay - circular guideline
+                    Circle()
+                        .stroke(Color.white, lineWidth: 3)
+                        .frame(width: cropSize, height: cropSize)
+                        .allowsHitTesting(false)
+                    
+                    // Corner guides to show it's a square crop area
+                    Circle()
+                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                        .frame(width: cropSize, height: cropSize)
+                        .allowsHitTesting(false)
+                }
+                .onAppear {
+                    print("🖼️ ImageCropperView appeared")
+                    print("   Image size: \(image.size)")
+                    print("   Geometry size: \(geometry.size)")
                 }
             }
+            .background(Color.black)
             .navigationTitle("Adjust Photo")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
-                        dismiss()
+                        print("❌ Cropping cancelled")
+                        onCancel()
                     }
+                    .foregroundColor(.white)
                 }
                 
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         cropAndSave()
                     }
+                    .foregroundColor(.white)
+                    .bold()
                 }
             }
+        }
+        .onAppear {
+            print("🎨 ImageCropperView NavigationStack appeared")
         }
     }
     
     private func cropAndSave() {
+        print("🔄 Cropping image...")
         guard let croppedImage = cropImageToCircle() else {
+            print("⚠️ Cropping failed, using original image")
             // Fallback: if cropping fails, just use the original image
             onCrop(image)
-            dismiss()
             return
         }
+        print("✅ Image cropped successfully")
         onCrop(croppedImage)
-        dismiss()
     }
     
     private func cropImageToCircle() -> UIImage? {
         let outputSize: CGFloat = 500
         
+        // Create a graphics context
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0 // Use 1x scale for consistent output
+        format.opaque = false // Support transparency
+        
         // Create renderer for output
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: outputSize, height: outputSize))
+        let renderer = UIGraphicsImageRenderer(
+            size: CGSize(width: outputSize, height: outputSize),
+            format: format
+        )
         
         let croppedImage = renderer.image { context in
             // Create circular clipping path
@@ -257,16 +332,31 @@ struct ImageCropperView: View {
             )
             circlePath.addClip()
             
-            // Calculate the draw rect to account for scale and offset
-            let drawSize: CGFloat = outputSize / scale
-            let drawX = (outputSize - drawSize) / 2 - (offset.width / scale)
-            let drawY = (outputSize - drawSize) / 2 - (offset.height / scale)
+            // Calculate image aspect ratio
+            let imageAspect = image.size.width / image.size.height
+            var drawSize: CGSize
+            
+            if imageAspect > 1 {
+                // Landscape: fit to height
+                let height = outputSize / scale
+                let width = height * imageAspect
+                drawSize = CGSize(width: width, height: height)
+            } else {
+                // Portrait or square: fit to width
+                let width = outputSize / scale
+                let height = width / imageAspect
+                drawSize = CGSize(width: width, height: height)
+            }
+            
+            // Center the image and apply offset
+            let drawX = (outputSize - drawSize.width) / 2 - (offset.width / scale)
+            let drawY = (outputSize - drawSize.height) / 2 - (offset.height / scale)
             
             let drawRect = CGRect(
                 x: drawX,
                 y: drawY,
-                width: drawSize,
-                height: drawSize
+                width: drawSize.width,
+                height: drawSize.height
             )
             
             // Draw the image
@@ -301,8 +391,112 @@ struct ImageCropperView: View {
         // Single name initials
         ProfilePhotoView(imageData: nil, displayName: "Superman", size: 60)
         
-        // Picker
-        ProfilePhotoPicker(imageData: $imageData, size: 100, displayName: "Test User")
+        // Picker with cropper enabled
+        ProfilePhotoPicker(imageData: $imageData, size: 100, displayName: "Test User", enableCropper: true)
+        
+        // Picker with cropper disabled (for testing)
+        ProfilePhotoPicker(imageData: $imageData, size: 100, displayName: "No Crop", enableCropper: false)
     }
     .padding()
 }
+
+#Preview("Image Cropper") {
+    @Previewable @State var croppedData: Data? = nil
+    @Previewable @State var showCropper = true
+    
+    // Create a test image with a colored background so we can see it
+    let testImage = createTestImage()
+    
+    Button("Show Cropper") {
+        showCropper = true
+    }
+    .sheet(isPresented: $showCropper) {
+        ImageCropperView(
+            image: testImage,
+            onCrop: { cropped in
+                print("Cropped image size: \(cropped.size)")
+                croppedData = cropped.pngData()
+                showCropper = false
+            },
+            onCancel: {
+                print("Cancelled")
+                showCropper = false
+            }
+        )
+    }
+}
+
+#Preview("Cropper Debug - Simple") {
+    // Ultra-simple test to verify the cropper shows ANYTHING
+    @Previewable @State var showSheet = true
+    
+    Button("Show Cropper") {
+        showSheet = true
+    }
+    .sheet(isPresented: $showSheet) {
+        NavigationStack {
+            ZStack {
+                Color.red // Should see red if view loads
+                    .ignoresSafeArea()
+                
+                Text("Can you see this?")
+                    .font(.largeTitle)
+                    .foregroundColor(.white)
+            }
+            .navigationTitle("Debug Test")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        showSheet = false
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Helper function to create a test image
+private func createTestImage() -> UIImage {
+    let size = CGSize(width: 300, height: 300)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1.0
+    
+    let renderer = UIGraphicsImageRenderer(size: size, format: format)
+    let image = renderer.image { context in
+        // Draw a gradient background
+        let colors = [UIColor.systemBlue.cgColor, UIColor.systemPurple.cgColor]
+        let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                 colors: colors as CFArray,
+                                 locations: [0.0, 1.0])!
+        
+        context.cgContext.drawLinearGradient(gradient,
+                                            start: CGPoint(x: 0, y: 0),
+                                            end: CGPoint(x: size.width, y: size.height),
+                                            options: [])
+        
+        // Draw a circle in the center
+        let circleRect = CGRect(x: size.width/2 - 50,
+                               y: size.height/2 - 50,
+                               width: 100,
+                               height: 100)
+        UIColor.white.setFill()
+        context.cgContext.fillEllipse(in: circleRect)
+        
+        // Draw some text
+        let text = "TEST"
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 40, weight: .bold),
+            .foregroundColor: UIColor.white
+        ]
+        let textSize = (text as NSString).size(withAttributes: attributes)
+        let textRect = CGRect(x: (size.width - textSize.width) / 2,
+                             y: (size.height - textSize.height) / 2,
+                             width: textSize.width,
+                             height: textSize.height)
+        (text as NSString).draw(in: textRect, withAttributes: attributes)
+    }
+    
+    return image
+}
+

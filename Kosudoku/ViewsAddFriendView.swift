@@ -6,13 +6,17 @@
 //
 
 import SwiftUI
+import SwiftData
 import CloudKit
 
 struct AddFriendView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @State private var searchText = ""
     @State private var searchResults: [CKRecord] = []
     @State private var isSearching = false
+    @State private var searchError: String?
+    @State private var searchTask: Task<Void, Never>?
     @State private var cloudKitService = CloudKitService.shared
     
     var body: some View {
@@ -20,6 +24,9 @@ struct AddFriendView: View {
             List {
                 if isSearching {
                     ProgressView()
+                } else if let error = searchError {
+                    Text(error)
+                        .foregroundColor(.red)
                 } else if searchResults.isEmpty && !searchText.isEmpty {
                     Text("No users found")
                         .foregroundColor(.secondary)
@@ -35,9 +42,18 @@ struct AddFriendView: View {
             }
             .navigationTitle("Add Friend")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $searchText, prompt: "Search by username")
-            .onChange(of: searchText) { oldValue, newValue in
+            .searchable(text: $searchText, prompt: "Search by username or display name")
+            .onSubmit(of: .search) {
                 Task {
+                    await performSearch()
+                }
+            }
+            .onChange(of: searchText) { oldValue, newValue in
+                // Debounce: wait briefly before searching to avoid rapid queries
+                searchTask?.cancel()
+                searchTask = Task {
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    guard !Task.isCancelled else { return }
                     await performSearch()
                 }
             }
@@ -58,13 +74,21 @@ struct AddFriendView: View {
         }
         
         isSearching = true
+        searchError = nil
         
         do {
             let results = try await cloudKitService.searchUsers(username: searchText)
-            searchResults = results
+            // Filter out the current user so you can't friend yourself
+            let currentUser = cloudKitService.currentUserRecordName
+            searchResults = results.filter { record in
+                // Compare against ownerRecordName (the iCloud user ID stored on the profile)
+                let ownerRecordName = record["ownerRecordName"] as? String
+                return ownerRecordName != currentUser
+            }
         } catch {
             print("Search error: \(error)")
             searchResults = []
+            searchError = "Search failed: \(error.localizedDescription)"
         }
         
         isSearching = false
@@ -73,15 +97,36 @@ struct AddFriendView: View {
     private func sendFriendRequest(_ record: CKRecord) async {
         do {
             guard let username = record["username"] as? String,
-                  let displayName = record["displayName"] as? String else {
+                  let displayName = record["displayName"] as? String,
+                  let currentUser = cloudKitService.currentUserRecordName else {
                 return
             }
             
-            try await cloudKitService.sendFriendRequest(
-                to: record.recordID.recordName,
+            // Use ownerRecordName (the friend's iCloud user ID) instead of the
+            // UserProfile record ID, so the recipient's device can match it against
+            // their own currentUserRecordName.
+            guard let friendOwnerRecordName = record["ownerRecordName"] as? String else {
+                print("⚠️ UserProfile record has no ownerRecordName — friend may need to re-save their profile")
+                return
+            }
+            
+            let ckRecordName = try await cloudKitService.sendFriendRequest(
+                to: friendOwnerRecordName,
                 friendUsername: username,
                 friendDisplayName: displayName
             )
+            
+            // Save locally so it appears in the sender's Friends list
+            let friendship = Friendship(
+                userRecordName: currentUser,
+                friendRecordName: friendOwnerRecordName,
+                friendUsername: username,
+                friendDisplayName: displayName,
+                status: .pending
+            )
+            friendship.cloudKitRecordName = ckRecordName
+            modelContext.insert(friendship)
+            try? modelContext.save()
             
             dismiss()
         } catch {

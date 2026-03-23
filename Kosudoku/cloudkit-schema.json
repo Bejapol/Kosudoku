@@ -30,6 +30,10 @@
         {
           "name": "createdAt",
           "type": "TIMESTAMP"
+        },
+        {
+          "name": "ownerRecordName",
+          "type": "STRING"
         }
       ],
       "indexes": [
@@ -47,6 +51,15 @@
           "fields": [
             {
               "name": "displayName",
+              "type": "QUERYABLE"
+            }
+          ]
+        },
+        {
+          "name": "ownerRecordName",
+          "fields": [
+            {
+              "name": "ownerRecordName",
               "type": "QUERYABLE"
             }
           ]
@@ -87,6 +100,10 @@
         {
           "name": "completedAt",
           "type": "TIMESTAMP"
+        },
+        {
+          "name": "invitedPlayers",
+          "type": "STRING_LIST"
         }
       ],
       "indexes": [
@@ -105,6 +122,15 @@
             {
               "name": "createdAt",
               "type": "SORTABLE"
+            }
+          ]
+        },
+        {
+          "name": "invitedPlayers",
+          "fields": [
+            {
+              "name": "invitedPlayers",
+              "type": "QUERYABLE"
             }
           ]
         }
@@ -154,6 +180,14 @@
         {
           "name": "lastMoveAt",
           "type": "TIMESTAMP"
+        },
+        {
+          "name": "selectedRow",
+          "type": "INT64"
+        },
+        {
+          "name": "selectedCol",
+          "type": "INT64"
         }
       ],
       "indexes": [
@@ -163,6 +197,24 @@
             {
               "name": "playerRecordName",
               "type": "QUERYABLE"
+            }
+          ]
+        },
+        {
+          "name": "gameSession",
+          "fields": [
+            {
+              "name": "gameSession",
+              "type": "QUERYABLE"
+            }
+          ]
+        },
+        {
+          "name": "score",
+          "fields": [
+            {
+              "name": "score",
+              "type": "SORTABLE"
             }
           ]
         }
@@ -220,6 +272,15 @@
               "type": "QUERYABLE"
             }
           ]
+        },
+        {
+          "name": "gameSession",
+          "fields": [
+            {
+              "name": "gameSession",
+              "type": "QUERYABLE"
+            }
+          ]
         }
       ]
     },
@@ -228,6 +289,14 @@
       "fields": [
         {
           "name": "userRecordName",
+          "type": "STRING"
+        },
+        {
+          "name": "userUsername",
+          "type": "STRING"
+        },
+        {
+          "name": "userDisplayName",
           "type": "STRING"
         },
         {
@@ -303,6 +372,48 @@
         {
           "name": "createdAt",
           "type": "TIMESTAMP"
+        },
+        {
+          "name": "groupChatID",
+          "type": "STRING"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "memberRecordNames",
+          "fields": [
+            {
+              "name": "memberRecordNames",
+              "type": "QUERYABLE"
+            }
+          ]
+        },
+        {
+          "name": "creatorRecordName",
+          "fields": [
+            {
+              "name": "creatorRecordName",
+              "type": "QUERYABLE"
+            }
+          ]
+        },
+        {
+          "name": "createdAt",
+          "fields": [
+            {
+              "name": "createdAt",
+              "type": "SORTABLE"
+            }
+          ]
+        },
+        {
+          "name": "groupChatID",
+          "fields": [
+            {
+              "name": "groupChatID",
+              "type": "QUERYABLE"
+            }
+          ]
         }
       ]
     }

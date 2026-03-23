@@ -94,15 +94,24 @@ struct NewChatView: View {
         
         isCreating = true
         
+        // Include the creator in the member list so all participants
+        // can find this chat via the memberRecordNames query
+        var allMembers = Array(selectedMembers)
+        if !allMembers.contains(creatorRecordName) {
+            allMembers.append(creatorRecordName)
+        }
+        
         let groupChat = GroupChat(
             name: chatName,
             creatorRecordName: creatorRecordName,
-            memberRecordNames: Array(selectedMembers)
+            memberRecordNames: allMembers
         )
         
         modelContext.insert(groupChat)
         
         do {
+            // Save to CloudKit so other members can see the chat
+            try await cloudKitService.saveGroupChat(groupChat)
             try modelContext.save()
             isCreating = false
             dismiss()
