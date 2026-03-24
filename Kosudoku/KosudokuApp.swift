@@ -8,9 +8,57 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import UserNotifications
+
+// MARK: - AppDelegate
+
+class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+    
+    // Handle incoming remote notifications (CloudKit subscriptions)
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        // Convert keys to [String: Any] for our handler
+        let info = userInfo.compactMapKeys { $0 as? String }
+        Task { @MainActor in
+            let handled = await ChatNotificationManager.shared.handleNotification(userInfo: info)
+            completionHandler(handled ? .newData : .noData)
+        }
+    }
+    
+    // MARK: - UNUserNotificationCenterDelegate
+    
+    // Suppress system banner when app is in foreground (our custom banner handles it)
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        return []
+    }
+    
+    // Handle notification tap (future: deep-link to chat)
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        // Could navigate to the relevant chat in the future
+    }
+}
+
+// Helper to convert [AnyHashable: Any] keys
+private extension Dictionary where Key == AnyHashable {
+    func compactMapKeys<T: Hashable>(_ transform: (Key) -> T?) -> [T: Value] {
+        var result: [T: Value] = [:]
+        for (key, value) in self {
+            if let newKey = transform(key) {
+                result[newKey] = value
+            }
+        }
+        return result
+    }
+}
 
 @main
 struct KosudokuApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             UserProfile.self,
@@ -71,6 +119,8 @@ struct KosudokuApp: App {
                     await authenticateUser()
                     // Register for remote notifications so CloudKit subscriptions can deliver push alerts
                     UIApplication.shared.registerForRemoteNotifications()
+                    // Request permission for visible push notifications
+                    await ChatNotificationManager.shared.requestNotificationPermission()
                 }
         }
     }

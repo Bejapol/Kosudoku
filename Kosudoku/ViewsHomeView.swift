@@ -24,13 +24,7 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Quick Play Section
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Quick Play")
-                            .font(.title2)
-                            .bold()
-                            .padding(.horizontal)
-                        
                         // Sign-in status banner
                         if !cloudKitService.isAuthenticated {
                             HStack {
@@ -183,14 +177,11 @@ struct HomeView: View {
                 }
                 .padding(.vertical)
             }
-            .navigationTitle("Kosudoku")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showingNewGameSheet = true
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                    }
+                ToolbarItem(placement: .principal) {
+                    Text("Kosudoku")
+                        .font(.headline)
                 }
             }
             .sheet(isPresented: $showingNewGameSheet) {
@@ -360,8 +351,10 @@ struct HomeView: View {
             return
         }
         
-        manager.viewCompletedGame(session)
-        showingGameView = true
+        Task {
+            await manager.viewCompletedGame(session)
+            showingGameView = true
+        }
     }
     
     private func rejoinGame(_ session: GameSession) async {

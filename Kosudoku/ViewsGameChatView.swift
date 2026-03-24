@@ -83,6 +83,8 @@ struct GameChatView: View {
                 }
             }
             .task {
+                // Suppress banners while viewing this game chat
+                ChatNotificationManager.shared.activeGameChatRecordName = gameSession.cloudKitRecordName
                 await fetchCloudKitMessages()
                 startPolling()
             }
@@ -91,6 +93,7 @@ struct GameChatView: View {
             }
             .onDisappear {
                 stopPolling()
+                ChatNotificationManager.shared.activeGameChatRecordName = nil
             }
         }
     }

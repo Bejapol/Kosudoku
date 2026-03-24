@@ -55,7 +55,8 @@ struct GameView: View {
                 LiveLeaderboardView(
                     currentPlayer: gameManager.currentPlayerState,
                     otherPlayers: gameManager.otherPlayers,
-                    playerColorMap: gameManager.playerColorMap
+                    playerColorMap: gameManager.playerColorMap,
+                    difficulty: gameManager.currentGame?.difficulty ?? .medium
                 )
                 .padding(.horizontal)
                 .padding(.top, 8)
@@ -116,49 +117,18 @@ struct GameView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             
-            // Completed game summary
+            // Completed game summary with final standings
             if isViewingCompleted {
-                VStack(spacing: 12) {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                            .font(.title2)
-                        Text("Puzzle Complete")
-                            .font(.title3)
-                            .bold()
-                    }
-                    
-                    if let game = gameManager.currentGame,
-                       let startedAt = game.startedAt,
-                       let completedAt = game.completedAt {
-                        let elapsed = Int(completedAt.timeIntervalSince(startedAt))
-                        let minutes = elapsed / 60
-                        let seconds = elapsed % 60
-                        HStack(spacing: 20) {
-                            Label(game.difficulty.rawValue.capitalized, systemImage: "speedometer")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Label(String(format: "%02d:%02d", minutes, seconds), systemImage: "clock")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    
-                    Button {
+                CompletedGameResultsView(
+                    game: gameManager.currentGame,
+                    currentPlayer: gameManager.currentPlayerState,
+                    otherPlayers: gameManager.otherPlayers,
+                    playerColorMap: gameManager.playerColorMap,
+                    onDone: {
                         gameManager.leaveGame()
                         dismiss()
-                    } label: {
-                        Text("Done")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
                     }
-                    .padding(.horizontal)
-                }
-                .padding(.vertical, 16)
+                )
             }
             // Number pad and controls - Collapsible
             else if viewMode != .gameboard {
@@ -409,6 +379,131 @@ struct GameView: View {
                 gameManager.triggerSync()
             }
         }
+    }
+}
+
+// MARK: - Completed Game Results
+
+struct CompletedGameResultsView: View {
+    let game: GameSession?
+    let currentPlayer: PlayerGameState?
+    let otherPlayers: [PlayerGameState]
+    let playerColorMap: [String: PlayerColor]
+    let onDone: () -> Void
+    
+    private var rankedPlayers: [PlayerGameState] {
+        var all = otherPlayers
+        if let current = currentPlayer {
+            all.append(current)
+        }
+        return all.sorted { $0.score > $1.score }
+    }
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            // Header
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.title2)
+                Text("Puzzle Complete")
+                    .font(.title3)
+                    .bold()
+            }
+            
+            // Game info
+            if let game,
+               let startedAt = game.startedAt,
+               let completedAt = game.completedAt {
+                let elapsed = Int(completedAt.timeIntervalSince(startedAt))
+                let minutes = elapsed / 60
+                let seconds = elapsed % 60
+                HStack(spacing: 20) {
+                    Label(game.difficulty.rawValue.capitalized, systemImage: "speedometer")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Label(String(format: "%02d:%02d", minutes, seconds), systemImage: "clock")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            // Player standings
+            if !rankedPlayers.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(rankedPlayers.enumerated()), id: \.element.id) { index, player in
+                        let playerColor = playerColorMap[player.playerRecordName]?.color ?? .blue
+                        let isCurrentUser = player.playerRecordName == currentPlayer?.playerRecordName
+                        
+                        HStack(spacing: 12) {
+                            // Position
+                            PositionBadge(position: index + 1)
+                                .frame(width: 32)
+                            
+                            // Player name
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(player.playerUsername)
+                                    .font(.subheadline)
+                                    .bold(isCurrentUser)
+                                    .foregroundColor(playerColor)
+                                
+                                HStack(spacing: 8) {
+                                    Label("\(player.correctGuesses)", systemImage: "checkmark.circle.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(.green)
+                                    Label("\(player.incorrectGuesses)", systemImage: "xmark.circle.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(.red)
+                                    Text("\(player.cellsCompleted.count) cells")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            // Score
+                            Text("\(player.score)")
+                                .font(.title3)
+                                .bold()
+                                .foregroundColor(playerColor)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(playerColor, lineWidth: 2)
+                                )
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(isCurrentUser ? playerColor.opacity(0.05) : Color.clear)
+                        
+                        if index < rankedPlayers.count - 1 {
+                            Divider()
+                                .padding(.leading, 56)
+                        }
+                    }
+                }
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+                .padding(.horizontal)
+            }
+            
+            // Done button
+            Button {
+                onDone()
+            } label: {
+                Text("Done")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+            }
+            .padding(.horizontal)
+        }
+        .padding(.vertical, 16)
     }
 }
 

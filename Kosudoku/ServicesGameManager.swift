@@ -171,6 +171,9 @@ class GameManager {
             // Subscribe to game updates (non-critical)
             try? await cloudKit.subscribeToGameUpdates(gameRecordName: gameRecordName)
             
+            // Subscribe to chat notifications for this game
+            await ChatNotificationManager.shared.subscribeToGameChat(gameRecordName: gameRecordName)
+            
             // If the game is already active, fetch the latest puzzleData from CloudKit
             if session.status == .active {
                 if let record = try? await cloudKit.fetchGameSession(recordName: gameRecordName),
@@ -275,9 +278,45 @@ class GameManager {
             throw GameError.cannotModifyFixedCell
         }
         
-        // Check if cell already completed by another player
+        // Fetch the latest board from CloudKit before making the move.
+        // This prevents overwriting the other player's moves and catches
+        // cells that were completed since the last sync.
+        if let gameRecordName = game.cloudKitRecordName {
+            if let gameRecord = try? await cloudKit.fetchGameSession(recordName: gameRecordName),
+               let cloudPuzzleData = gameRecord["puzzleData"] as? String,
+               let cloudBoard = SudokuBoard.fromJSONString(cloudPuzzleData) {
+                // Merge any moves from the other player into our local board
+                for r in 0..<9 {
+                    for c in 0..<9 {
+                        let cloudCell = cloudBoard[r, c]
+                        let localCell = board[r, c]
+                        if cloudCell.value != nil && localCell.value == nil {
+                            board[r, c] = cloudCell
+                        } else if let cb = cloudCell.completedBy, localCell.completedBy == nil {
+                            board[r, c].completedBy = cb
+                            if localCell.value == nil {
+                                board[r, c].value = cloudCell.value
+                            }
+                        }
+                    }
+                }
+                currentBoard = board
+            }
+        }
+        
+        // Re-check if the cell was already completed by another player
+        // (may have been filled by the fresh CloudKit data above)
         if let completedBy = board[row, col].completedBy,
            completedBy != playerState.playerRecordName {
+            // Update the game's puzzle data so the UI reflects the merged board
+            game.puzzleData = board.toJSONString()
+            throw GameError.cellAlreadyCompleted
+        }
+        
+        // If the cell already has a value (e.g. the other player just filled it),
+        // don't allow overwriting
+        if board[row, col].value != nil {
+            game.puzzleData = board.toJSONString()
             throw GameError.cellAlreadyCompleted
         }
         
@@ -693,7 +732,7 @@ class GameManager {
     }
     
     /// Load a completed game for viewing (read-only, no sync timer)
-    func viewCompletedGame(_ session: GameSession) {
+    func viewCompletedGame(_ session: GameSession) async {
         currentGame = session
         currentPlayerState = nil
         otherPlayers = []
@@ -707,9 +746,51 @@ class GameManager {
         if let solution = SudokuBoard.fromJSONString(session.solutionData) {
             solutionBoard = solution
         }
+        
+        // Fetch player states from CloudKit to show final standings
+        guard let gameRecordName = session.cloudKitRecordName else { return }
+        do {
+            let records = try await cloudKit.fetchPlayerStates(gameRecordName: gameRecordName)
+            let currentUserRecordName = cloudKit.currentUserRecordName
+            
+            var allPlayers: [PlayerGameState] = []
+            for record in records {
+                guard let playerRecordName = record["playerRecordName"] as? String else { continue }
+                
+                let state = PlayerGameState(
+                    playerRecordName: playerRecordName,
+                    playerUsername: (record["playerUsername"] as? String) ?? "Unknown",
+                    gameSession: session
+                )
+                state.score = (record["score"] as? Int) ?? 0
+                state.correctGuesses = (record["correctGuesses"] as? Int) ?? 0
+                state.incorrectGuesses = (record["incorrectGuesses"] as? Int) ?? 0
+                state.cellsCompleted = (record["cellsCompleted"] as? [String]) ?? []
+                state.joinedAt = (record["joinedAt"] as? Date) ?? Date()
+                
+                if playerRecordName == currentUserRecordName {
+                    currentPlayerState = state
+                } else {
+                    allPlayers.append(state)
+                }
+            }
+            
+            otherPlayers = allPlayers
+            recomputeColorMap()
+        } catch {
+            print("⚠️ Failed to fetch player states for completed game: \(error.localizedDescription)")
+        }
     }
     
     func leaveGame() {
+        // Unsubscribe from chat notifications for this game
+        if let recordName = currentGame?.cloudKitRecordName {
+            let subID = "chat-game-\(recordName)"
+            Task {
+                await ChatNotificationManager.shared.unsubscribeFromChat(subscriptionID: subID)
+            }
+        }
+        
         stopSyncTimer()
         currentGame = nil
         currentPlayerState = nil

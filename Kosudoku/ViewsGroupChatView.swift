@@ -68,6 +68,8 @@ struct GroupChatView: View {
         .navigationTitle(groupChat.name)
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            // Suppress banners while viewing this group chat
+            ChatNotificationManager.shared.activeGroupChatID = groupChat.id.uuidString
             await fetchCloudKitMessages()
             startPolling()
         }
@@ -76,6 +78,7 @@ struct GroupChatView: View {
         }
         .onDisappear {
             stopPolling()
+            ChatNotificationManager.shared.activeGroupChatID = nil
         }
     }
     

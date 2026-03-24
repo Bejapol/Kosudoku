@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		AC9B3A042F726A28008E2C44 /* ServicesChatNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A032F726A28008E2C44 /* ServicesChatNotificationManager.swift */; };
+		AC9B3A062F726AE1008E2C44 /* ViewsChatBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A052F726AE1008E2C44 /* ViewsChatBannerView.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		AC1DE0892F5D48DD0016C7EA /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +32,8 @@
 		AC1DE0772F5D48DB0016C7EA /* Kosudoku.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kosudoku.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AC1DE0882F5D48DD0016C7EA /* KosudokuTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KosudokuTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AC1DE0922F5D48DD0016C7EA /* KosudokuUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KosudokuUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC9B3A032F726A28008E2C44 /* ServicesChatNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicesChatNotificationManager.swift; sourceTree = "<group>"; };
+		AC9B3A052F726AE1008E2C44 /* ViewsChatBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewsChatBannerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -92,6 +99,8 @@
 				AC1DE08B2F5D48DD0016C7EA /* KosudokuTests */,
 				AC1DE0952F5D48DD0016C7EA /* KosudokuUITests */,
 				AC1DE0782F5D48DB0016C7EA /* Products */,
+				AC9B3A032F726A28008E2C44 /* ServicesChatNotificationManager.swift */,
+				AC9B3A052F726AE1008E2C44 /* ViewsChatBannerView.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -249,6 +258,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AC9B3A042F726A28008E2C44 /* ServicesChatNotificationManager.swift in Sources */,
+				AC9B3A062F726AE1008E2C44 /* ViewsChatBannerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -102,6 +102,11 @@ struct ChatsView: View {
             }
             
             try? modelContext.save()
+            
+            // Subscribe to push notifications for all group chats
+            for chat in groupChats {
+                await ChatNotificationManager.shared.subscribeToGroupChat(groupChatID: chat.id.uuidString)
+            }
         } catch {
             print("Failed to fetch group chats from CloudKit: \(error)")
         }

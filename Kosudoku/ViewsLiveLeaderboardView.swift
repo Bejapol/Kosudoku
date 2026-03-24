@@ -12,7 +12,9 @@ struct LiveLeaderboardView: View {
     let currentPlayer: PlayerGameState?
     let otherPlayers: [PlayerGameState]
     let playerColorMap: [String: PlayerColor]
+    var difficulty: DifficultyLevel = .medium
     @State private var isExpanded = false
+    @State private var showScoringInfo = false
     
     var allPlayers: [PlayerGameState] {
         var players = otherPlayers
@@ -26,22 +28,35 @@ struct LiveLeaderboardView: View {
         VStack(spacing: 0) {
             // Compact view - just top scores
             if !isExpanded {
-                CompactLeaderboardView(
-                    players: Array(allPlayers.prefix(3)),
-                    currentPlayerRecordName: currentPlayer?.playerRecordName,
-                    playerColorMap: playerColorMap
-                )
-                .onTapGesture {
-                    withAnimation {
-                        isExpanded = true
+                HStack(spacing: 0) {
+                    CompactLeaderboardView(
+                        players: Array(allPlayers.prefix(3)),
+                        currentPlayerRecordName: currentPlayer?.playerRecordName,
+                        playerColorMap: playerColorMap
+                    )
+                    .onTapGesture {
+                        withAnimation {
+                            isExpanded = true
+                        }
                     }
+                    
+                    // Scoring info button
+                    Button {
+                        showScoringInfo = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.trailing, 8)
                 }
             } else {
                 // Expanded view - all players
                 ExpandedLeaderboardView(
                     players: allPlayers,
                     currentPlayerRecordName: currentPlayer?.playerRecordName,
-                    playerColorMap: playerColorMap
+                    playerColorMap: playerColorMap,
+                    onInfoTap: { showScoringInfo = true }
                 )
                 .onTapGesture {
                     withAnimation {
@@ -53,6 +68,9 @@ struct LiveLeaderboardView: View {
         .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(radius: 2)
+        .sheet(isPresented: $showScoringInfo) {
+            ScoringInfoView(difficulty: difficulty)
+        }
     }
 }
 
@@ -108,6 +126,7 @@ struct ExpandedLeaderboardView: View {
     let players: [PlayerGameState]
     let currentPlayerRecordName: String?
     let playerColorMap: [String: PlayerColor]
+    var onInfoTap: (() -> Void)? = nil
     
     var body: some View {
         VStack(spacing: 0) {
@@ -116,6 +135,17 @@ struct ExpandedLeaderboardView: View {
                 Text("Live Leaderboard")
                     .font(.headline)
                 Spacer()
+                
+                if let onInfoTap {
+                    Button {
+                        onInfoTap()
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
                 Image(systemName: "chevron.up")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -283,6 +313,115 @@ struct PositionBadge: View {
             return "medal.fill"
         default:
             return ""
+        }
+    }
+}
+
+// MARK: - Scoring Info
+
+struct ScoringInfoView: View {
+    let difficulty: DifficultyLevel
+    @Environment(\.dismiss) private var dismiss
+    
+    private var pointsPerCorrect: Int {
+        ScoringSystem.pointsForCorrectGuess(difficulty: difficulty)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Per Move") {
+                    HStack {
+                        Label("Correct guess", systemImage: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Spacer()
+                        Text("+\(pointsPerCorrect) pts")
+                            .bold()
+                    }
+                    HStack {
+                        Label("Incorrect guess", systemImage: "xmark.circle.fill")
+                            .foregroundColor(.red)
+                        Spacer()
+                        Text("\(ScoringSystem.pointsForIncorrectGuess()) pts")
+                            .bold()
+                    }
+                }
+                
+                Section("Difficulty Multiplier") {
+                    ForEach(DifficultyLevel.allCases, id: \.self) { level in
+                        HStack {
+                            Text(level.rawValue.capitalized)
+                            if level == difficulty {
+                                Text("(current)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Text("\(ScoringSystem.difficultyMultiplier(for: level), specifier: "%.1f")x")
+                                .bold()
+                                .foregroundColor(level == difficulty ? .primary : .secondary)
+                        }
+                    }
+                }
+                
+                Section("Speed Bonus (end of game)") {
+                    HStack {
+                        Label("< 10 sec / cell", systemImage: "hare.fill")
+                        Spacer()
+                        Text("+5 pts/cell")
+                            .bold()
+                    }
+                    HStack {
+                        Label("10–20 sec / cell", systemImage: "figure.walk")
+                        Spacer()
+                        Text("+2 pts/cell")
+                            .bold()
+                    }
+                    HStack {
+                        Label("> 20 sec / cell", systemImage: "tortoise.fill")
+                        Spacer()
+                        Text("+0")
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                Section("Finish Bonus") {
+                    HStack {
+                        Label("1st place", systemImage: "trophy.fill")
+                            .foregroundColor(.yellow)
+                        Spacer()
+                        Text("+\(ScoringSystem.firstPlaceBonus) pts")
+                            .bold()
+                    }
+                    HStack {
+                        Label("2nd place", systemImage: "medal.fill")
+                            .foregroundColor(.gray)
+                        Spacer()
+                        Text("+\(ScoringSystem.secondPlaceBonus) pts")
+                            .bold()
+                    }
+                    HStack {
+                        Label("3rd place", systemImage: "medal.fill")
+                            .foregroundColor(.orange)
+                        Spacer()
+                        Text("+\(ScoringSystem.thirdPlaceBonus) pts")
+                            .bold()
+                    }
+                }
+                
+                Section {
+                    Text("Your final score is the sum of all correct-guess points, minus incorrect-guess penalties, plus any speed and finish bonuses. The minimum score is 0.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .navigationTitle("Scoring")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
         }
     }
 }

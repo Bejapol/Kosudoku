@@ -18,6 +18,8 @@ struct ContentView: View {
     @Query private var profiles: [UserProfile]
     @Query private var gameSessions: [GameSession]
     @Query private var friendships: [Friendship]
+    @Query private var groupChats: [GroupChat]
+    @State private var notificationManager = ChatNotificationManager.shared
     
     private var waitingGamesCount: Int {
         gameSessions.filter { $0.status == .waiting }.count
@@ -30,32 +32,51 @@ struct ContentView: View {
     }
     
     var body: some View {
-        TabView(selection: $selectedTab) {
-            HomeView()
-                .tabItem {
-                    Label("Home", systemImage: "house.fill")
-                }
-                .tag(0)
-                .badge(waitingGamesCount > 0 ? waitingGamesCount : 0)
+        ZStack(alignment: .top) {
+            TabView(selection: $selectedTab) {
+                HomeView()
+                    .tabItem {
+                        Label("Home", systemImage: "house.fill")
+                    }
+                    .tag(0)
+                    .badge(waitingGamesCount > 0 ? waitingGamesCount : 0)
+                
+                FriendsView()
+                    .tabItem {
+                        Label("Friends", systemImage: "person.2.fill")
+                    }
+                    .tag(1)
+                    .badge(pendingFriendRequestCount)
+                
+                ChatsView()
+                    .tabItem {
+                        Label("Chats", systemImage: "message.fill")
+                    }
+                    .tag(2)
+                
+                ProfileView()
+                    .tabItem {
+                        Label("Profile", systemImage: "person.fill")
+                    }
+                    .tag(3)
+            }
             
-            FriendsView()
-                .tabItem {
-                    Label("Friends", systemImage: "person.2.fill")
-                }
-                .tag(1)
-                .badge(pendingFriendRequestCount)
-            
-            ChatsView()
-                .tabItem {
-                    Label("Chats", systemImage: "message.fill")
-                }
-                .tag(2)
-            
-            ProfileView()
-                .tabItem {
-                    Label("Profile", systemImage: "person.fill")
-                }
-                .tag(3)
+            // In-app chat notification banner
+            if let banner = notificationManager.currentBanner {
+                ChatBannerView(
+                    banner: banner,
+                    onTap: {
+                        notificationManager.dismissCurrentBanner()
+                        selectedTab = 2 // Switch to Chats tab
+                    },
+                    onDismiss: {
+                        notificationManager.dismissCurrentBanner()
+                    }
+                )
+                .padding(.top, 4)
+                .zIndex(100)
+                .animation(.spring(duration: 0.4), value: notificationManager.currentBanner?.id)
+            }
         }
         .sheet(isPresented: $showingProfileSetup) {
             ProfileSetupView()
@@ -67,6 +88,8 @@ struct ContentView: View {
             await syncFriendshipsFromCloudKit()
             // Clean up CloudKit records for games completed/abandoned more than 24 hours ago
             await cloudKitService.cleanupOldGameRecords()
+            // Subscribe to chat notifications for existing chats
+            await subscribeToExistingChats()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -155,6 +178,20 @@ struct ContentView: View {
             try? modelContext.save()
         } catch {
             print("⚠️ Failed to sync friendships at launch: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Subscribe to CloudKit push notifications for all group chats and active game sessions
+    private func subscribeToExistingChats() async {
+        // Subscribe to group chats
+        for chat in groupChats {
+            await notificationManager.subscribeToGroupChat(groupChatID: chat.id.uuidString)
+        }
+        // Subscribe to active/waiting game sessions
+        for session in gameSessions where session.status == .active || session.status == .waiting {
+            if let recordName = session.cloudKitRecordName {
+                await notificationManager.subscribeToGameChat(gameRecordName: recordName)
+            }
         }
     }
     
