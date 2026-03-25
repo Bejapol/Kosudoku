@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		AC9B3A042F726A28008E2C44 /* ServicesChatNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A032F726A28008E2C44 /* ServicesChatNotificationManager.swift */; };
 		AC9B3A062F726AE1008E2C44 /* ViewsChatBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A052F726AE1008E2C44 /* ViewsChatBannerView.swift */; };
+		AC9B3A0A2F73C718008E2C44 /* ViewsGameLobbyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A092F73C718008E2C44 /* ViewsGameLobbyView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -34,6 +35,7 @@
 		AC1DE0922F5D48DD0016C7EA /* KosudokuUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KosudokuUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AC9B3A032F726A28008E2C44 /* ServicesChatNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicesChatNotificationManager.swift; sourceTree = "<group>"; };
 		AC9B3A052F726AE1008E2C44 /* ViewsChatBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewsChatBannerView.swift; sourceTree = "<group>"; };
+		AC9B3A092F73C718008E2C44 /* ViewsGameLobbyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewsGameLobbyView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -101,6 +103,7 @@
 				AC1DE0782F5D48DB0016C7EA /* Products */,
 				AC9B3A032F726A28008E2C44 /* ServicesChatNotificationManager.swift */,
 				AC9B3A052F726AE1008E2C44 /* ViewsChatBannerView.swift */,
+				AC9B3A092F73C718008E2C44 /* ViewsGameLobbyView.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -260,6 +263,7 @@
 			files = (
 				AC9B3A042F726A28008E2C44 /* ServicesChatNotificationManager.swift in Sources */,
 				AC9B3A062F726AE1008E2C44 /* ViewsChatBannerView.swift in Sources */,
+				AC9B3A0A2F73C718008E2C44 /* ViewsGameLobbyView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -61,13 +61,20 @@ struct ContentView: View {
                     .tag(3)
             }
             
-            // In-app chat notification banner
+            // In-app notification banner
             if let banner = notificationManager.currentBanner {
                 ChatBannerView(
                     banner: banner,
                     onTap: {
                         notificationManager.dismissCurrentBanner()
-                        selectedTab = 2 // Switch to Chats tab
+                        switch banner.bannerType {
+                        case .gameChat, .groupChat:
+                            selectedTab = 2 // Chats tab
+                        case .friendRequest:
+                            selectedTab = 1 // Friends tab
+                        case .gameInvite:
+                            selectedTab = 0 // Home tab (game invitations)
+                        }
                     },
                     onDismiss: {
                         notificationManager.dismissCurrentBanner()
@@ -181,17 +188,84 @@ struct ContentView: View {
         }
     }
     
-    /// Subscribe to CloudKit push notifications for all group chats and active game sessions
+    /// Subscribe to CloudKit push notifications and start monitoring for all chats, friend requests, and game invites
     private func subscribeToExistingChats() async {
-        // Subscribe to group chats
+        // Seed seen items so we don't get banners for existing data
+        await seedSeenMessages()
+        await seedSeenFriendRequests()
+        await seedSeenGameInvites()
+        
+        // Subscribe and monitor group chats
         for chat in groupChats {
-            await notificationManager.subscribeToGroupChat(groupChatID: chat.id.uuidString)
+            let chatID = chat.id.uuidString
+            await notificationManager.subscribeToGroupChat(groupChatID: chatID)
+            notificationManager.monitorGroupChat(groupChatID: chatID)
         }
-        // Subscribe to active/waiting game sessions
+        // Subscribe and monitor active/waiting game sessions
         for session in gameSessions where session.status == .active || session.status == .waiting {
             if let recordName = session.cloudKitRecordName {
                 await notificationManager.subscribeToGameChat(gameRecordName: recordName)
+                notificationManager.monitorGameChat(gameRecordName: recordName)
             }
+        }
+        
+        // Subscribe to friend requests and game invites
+        await notificationManager.subscribeToFriendRequests()
+        await notificationManager.subscribeToGameInvites()
+    }
+    
+    /// Fetch existing messages from all chats so we don't show banners for old messages
+    private func seedSeenMessages() async {
+        // Seed game chat messages
+        for session in gameSessions where session.status == .active || session.status == .waiting {
+            guard let recordName = session.cloudKitRecordName else { continue }
+            if let records = try? await cloudKitService.fetchChatMessages(gameRecordName: recordName) {
+                let stableIDs = records.compactMap { record -> String? in
+                    guard let sender = record["senderRecordName"] as? String,
+                          let content = record["content"] as? String else { return nil }
+                    let timestamp = (record["timestamp"] as? Date) ?? Date()
+                    return "\(sender)|\(content)|\(Int(timestamp.timeIntervalSince1970))"
+                }
+                notificationManager.markMessagesSeen(stableIDs)
+            }
+        }
+        // Seed group chat messages
+        for chat in groupChats {
+            if let records = try? await cloudKitService.fetchChatMessages(groupChatID: chat.id.uuidString) {
+                let stableIDs = records.compactMap { record -> String? in
+                    guard let sender = record["senderRecordName"] as? String,
+                          let content = record["content"] as? String else { return nil }
+                    let timestamp = (record["timestamp"] as? Date) ?? Date()
+                    return "\(sender)|\(content)|\(Int(timestamp.timeIntervalSince1970))"
+                }
+                notificationManager.markMessagesSeen(stableIDs)
+            }
+        }
+    }
+    
+    /// Seed existing friend requests so we don't show banners for old requests
+    private func seedSeenFriendRequests() async {
+        // Mark all currently known friendships as seen
+        let friendRequestIDs = friendships.compactMap { $0.cloudKitRecordName }
+        notificationManager.markFriendRequestsSeen(friendRequestIDs)
+        
+        // Also fetch from CloudKit to catch any we don't have locally
+        if let records = try? await cloudKitService.fetchFriendships() {
+            let recordNames = records.map { $0.recordID.recordName }
+            notificationManager.markFriendRequestsSeen(recordNames)
+        }
+    }
+    
+    /// Seed existing game invites so we don't show banners for old invites
+    private func seedSeenGameInvites() async {
+        // Mark all locally known waiting/active game sessions as seen
+        let gameInviteIDs = gameSessions.compactMap { $0.cloudKitRecordName }
+        notificationManager.markGameInvitesSeen(gameInviteIDs)
+        
+        // Also fetch from CloudKit
+        if let records = try? await cloudKitService.fetchInvitedGameSessions() {
+            let recordNames = records.map { $0.recordID.recordName }
+            notificationManager.markGameInvitesSeen(recordNames)
         }
     }
     

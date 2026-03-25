@@ -14,16 +14,22 @@ struct HomeView: View {
     @State private var gameManager: GameManager?
     @State private var showingNewGameSheet = false
     @State private var showingGameView = false
+    @State private var showingLobbyView = false
     @State private var errorMessage: String?
     @State private var showingError = false
     @State private var showingProfileSetup = false
     @State private var cloudKitService = CloudKitService.shared
     @Query private var gameSessions: [GameSession]
+    @Query private var friendships: [Friendship]
     
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
+                    // Stylized logo with speed streaks
+                    KosudokuLogo()
+                        .padding(.top, 8)
+                    
                     VStack(alignment: .leading, spacing: 12) {
                         // Sign-in status banner
                         if !cloudKitService.isAuthenticated {
@@ -104,6 +110,32 @@ struct HomeView: View {
                     Divider()
                         .padding(.horizontal)
                     
+                    // Your Lobbies Section (games you host that are waiting)
+                    if !hostedWaitingGames.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("Your Lobbies")
+                                    .font(.title2)
+                                    .bold()
+                                Circle()
+                                    .fill(Color.blue)
+                                    .frame(width: 8, height: 8)
+                            }
+                            .padding(.horizontal)
+                            
+                            ForEach(hostedWaitingGames) { game in
+                                LobbyCard(session: game) {
+                                    Task {
+                                        await rejoinLobby(game)
+                                    }
+                                }
+                            }
+                        }
+                        
+                        Divider()
+                            .padding(.horizontal)
+                    }
+                    
                     // Waiting Games Section (Game Invitations)
                     if !waitingGames.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -118,11 +150,19 @@ struct HomeView: View {
                             .padding(.horizontal)
                             
                             ForEach(waitingGames) { game in
-                                GameInvitationCard(session: game) {
-                                    Task {
-                                        await rejoinGame(game)
+                                GameInvitationCard(
+                                    session: game,
+                                    onAccept: {
+                                        Task {
+                                            await acceptInvitation(game)
+                                        }
+                                    },
+                                    onDecline: {
+                                        Task {
+                                            await declineInvitation(game)
+                                        }
                                     }
-                                }
+                                )
                             }
                         }
                         
@@ -178,14 +218,15 @@ struct HomeView: View {
                 .padding(.vertical)
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("Kosudoku")
-                        .font(.headline)
-                }
-            }
             .sheet(isPresented: $showingNewGameSheet) {
-                NewGameView()
+                NewGameView { manager, isMultiplayer in
+                    gameManager = manager
+                    if isMultiplayer {
+                        showingLobbyView = true
+                    } else {
+                        showingGameView = true
+                    }
+                }
             }
             .sheet(isPresented: $showingProfileSetup) {
                 ProfileSetupView()
@@ -193,6 +234,11 @@ struct HomeView: View {
             .navigationDestination(isPresented: $showingGameView) {
                 if let manager = gameManager {
                     GameView(gameManager: manager)
+                }
+            }
+            .navigationDestination(isPresented: $showingLobbyView) {
+                if let manager = gameManager {
+                    GameLobbyView(gameManager: manager, friendships: friendships)
                 }
             }
             .alert("Error", isPresented: $showingError) {
@@ -236,7 +282,18 @@ struct HomeView: View {
         return gameSessions.filter { game in
             game.status == .waiting &&
             game.hostRecordName != currentUser &&
-            game.invitedPlayers.contains(currentUser)
+            game.invitedPlayers.contains(currentUser) &&
+            !game.declinedPlayers.contains(currentUser)
+        }
+    }
+    
+    /// Games where the current user is the host and the game is still waiting
+    private var hostedWaitingGames: [GameSession] {
+        let currentUser = cloudKitService.currentUserRecordName ?? ""
+        return gameSessions.filter { game in
+            game.status == .waiting &&
+            game.hostRecordName == currentUser &&
+            !game.invitedPlayers.isEmpty
         }
     }
     
@@ -286,6 +343,7 @@ struct HomeView: View {
                 )
                 session.cloudKitRecordName = recordName
                 session.createdAt = (record["createdAt"] as? Date) ?? Date()
+                session.declinedPlayers = (record["declinedPlayers"] as? [String]) ?? []
                 
                 if let statusRaw = record["status"] as? String,
                    let status = GameStatus(rawValue: statusRaw) {
@@ -368,9 +426,69 @@ struct HomeView: View {
             print("🎮 Rejoining game...")
             try await manager.joinGame(session)
             print("🎮 Successfully rejoined game")
-            showingGameView = true
+            if session.status == .waiting {
+                showingLobbyView = true
+            } else {
+                showingGameView = true
+            }
         } catch {
             print("❌ Error joining game: \(error)")
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+    
+    private func rejoinLobby(_ session: GameSession) async {
+        guard let manager = gameManager else {
+            errorMessage = "Game manager not initialized"
+            showingError = true
+            return
+        }
+        
+        do {
+            print("🎮 Rejoining lobby...")
+            try await manager.joinGame(session)
+            print("🎮 Successfully rejoined lobby")
+            showingLobbyView = true
+        } catch {
+            print("❌ Error rejoining lobby: \(error)")
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+    
+    private func acceptInvitation(_ session: GameSession) async {
+        guard let manager = gameManager else {
+            errorMessage = "Game manager not initialized"
+            showingError = true
+            return
+        }
+        
+        do {
+            print("🎮 Accepting game invitation...")
+            try await manager.joinGame(session)
+            print("🎮 Accepted invitation, entering lobby")
+            showingLobbyView = true
+        } catch {
+            print("❌ Error accepting invitation: \(error)")
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+    
+    private func declineInvitation(_ session: GameSession) async {
+        guard let manager = gameManager else {
+            errorMessage = "Game manager not initialized"
+            showingError = true
+            return
+        }
+        
+        do {
+            print("🎮 Declining game invitation...")
+            try await manager.declineGame(session)
+            print("🎮 Declined invitation")
+        } catch {
+            print("❌ Error declining invitation: \(error)")
             errorMessage = error.localizedDescription
             showingError = true
         }
@@ -379,27 +497,103 @@ struct HomeView: View {
 
 struct GameInvitationCard: View {
     let session: GameSession
+    let onAccept: () -> Void
+    let onDecline: () -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "envelope.fill")
+                    .foregroundColor(.orange)
+                Text(session.difficulty.rawValue.capitalized)
+                    .font(.headline)
+                Spacer()
+                Text("Invitation")
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.2))
+                    .foregroundColor(.orange)
+                    .cornerRadius(4)
+            }
+            
+            Text("Created: \(session.createdAt, format: .relative(presentation: .named))")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            HStack(spacing: 12) {
+                Button {
+                    onAccept()
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark")
+                        Text("Accept")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(Color.green)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                }
+                
+                Button {
+                    onDecline()
+                } label: {
+                    HStack {
+                        Image(systemName: "xmark")
+                        Text("Decline")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(Color.red.opacity(0.15))
+                    .foregroundColor(.red)
+                    .cornerRadius(8)
+                }
+            }
+            .padding(.top, 4)
+        }
+        .padding()
+        .background(
+            LinearGradient(
+                colors: [Color.orange.opacity(0.1), Color.orange.opacity(0.05)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+        )
+        .cornerRadius(12)
+        .padding(.horizontal)
+    }
+}
+
+struct LobbyCard: View {
+    let session: GameSession
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Image(systemName: "envelope.fill")
-                        .foregroundColor(.orange)
+                    Image(systemName: "person.3.fill")
+                        .foregroundColor(.blue)
                     Text(session.difficulty.rawValue.capitalized)
                         .font(.headline)
                     Spacer()
-                    Text("Invitation")
+                    Text("Lobby")
                         .font(.caption)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Color.orange.opacity(0.2))
-                        .foregroundColor(.orange)
+                        .background(Color.blue.opacity(0.2))
+                        .foregroundColor(.blue)
                         .cornerRadius(4)
                 }
                 
-                Text("Tap to join this game")
+                Text("Waiting for \(session.invitedPlayers.count) player\(session.invitedPlayers.count == 1 ? "" : "s")")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 
@@ -410,14 +604,14 @@ struct GameInvitationCard: View {
             .padding()
             .background(
                 LinearGradient(
-                    colors: [Color.orange.opacity(0.1), Color.orange.opacity(0.05)],
+                    colors: [Color.blue.opacity(0.1), Color.blue.opacity(0.05)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                    .stroke(Color.blue.opacity(0.3), lineWidth: 1)
             )
             .cornerRadius(12)
             .padding(.horizontal)
@@ -514,6 +708,107 @@ struct CompletedGameCard: View {
             .padding(.horizontal)
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Stylized Logo
+
+struct KosudokuLogo: View {
+    var body: some View {
+        ZStack {
+            // Speed streaks behind the text
+            SpeedStreaks()
+            
+            // Main title
+            Text("KOSUDOKU")
+                .font(.system(size: 42, weight: .black, design: .rounded))
+                .italic()
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.blue, .cyan],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .shadow(color: .blue.opacity(0.3), radius: 4, x: 2, y: 2)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct SpeedStreaks: View {
+    var body: some View {
+        Canvas { context, size in
+            let centerY = size.height / 2
+            
+            // Define streak configurations: (yOffset, width, opacity, thickness)
+            let streaks: [(CGFloat, CGFloat, Double, CGFloat)] = [
+                (-18, 60, 0.35, 3),
+                (-10, 80, 0.25, 2.5),
+                (-3, 45, 0.3, 2),
+                (5, 70, 0.2, 2.5),
+                (12, 55, 0.3, 3),
+                (20, 40, 0.25, 2),
+            ]
+            
+            for (yOffset, width, opacity, thickness) in streaks {
+                let y = centerY + yOffset
+                let startX: CGFloat = 12
+                
+                var path = Path()
+                path.move(to: CGPoint(x: startX, y: y))
+                path.addLine(to: CGPoint(x: startX + width, y: y))
+                
+                context.stroke(
+                    path,
+                    with: .linearGradient(
+                        Gradient(colors: [
+                            .cyan.opacity(0),
+                            .cyan.opacity(opacity),
+                            .blue.opacity(opacity * 0.5),
+                            .blue.opacity(0)
+                        ]),
+                        startPoint: CGPoint(x: startX, y: y),
+                        endPoint: CGPoint(x: startX + width, y: y)
+                    ),
+                    style: StrokeStyle(lineWidth: thickness, lineCap: .round)
+                )
+            }
+            
+            // Right-side streaks (trailing the text)
+            let rightStreaks: [(CGFloat, CGFloat, Double, CGFloat)] = [
+                (-15, 50, 0.3, 2.5),
+                (-6, 65, 0.2, 2),
+                (2, 40, 0.35, 3),
+                (10, 55, 0.25, 2),
+                (18, 35, 0.3, 2.5),
+            ]
+            
+            for (yOffset, width, opacity, thickness) in rightStreaks {
+                let y = centerY + yOffset
+                let startX = size.width - 12 - width
+                
+                var path = Path()
+                path.move(to: CGPoint(x: startX, y: y))
+                path.addLine(to: CGPoint(x: startX + width, y: y))
+                
+                context.stroke(
+                    path,
+                    with: .linearGradient(
+                        Gradient(colors: [
+                            .blue.opacity(0),
+                            .blue.opacity(opacity * 0.5),
+                            .cyan.opacity(opacity),
+                            .cyan.opacity(0)
+                        ]),
+                        startPoint: CGPoint(x: startX, y: y),
+                        endPoint: CGPoint(x: startX + width, y: y)
+                    ),
+                    style: StrokeStyle(lineWidth: thickness, lineCap: .round)
+                )
+            }
+        }
+        .frame(height: 60)
     }
 }
 

@@ -14,6 +14,7 @@ struct ChatMessageBubble: View {
     let isCurrentUser: Bool
     @State private var profileImageData: Data?
     @State private var cloudKitService = CloudKitService.shared
+    @State private var showingProfile = false
     
     // Static cache so profile photos persist across view recreations during polling
     private static var photoCache: [String: Data] = [:]
@@ -21,12 +22,13 @@ struct ChatMessageBubble: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             if !isCurrentUser {
-                // Other user's photo on left
+                // Other user's photo on left — tappable
                 ProfilePhotoView(
                     imageData: profileImageData,
                     displayName: message.senderUsername,
                     size: 32
                 )
+                .onTapGesture { showingProfile = true }
             }
             
             VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: 4) {
@@ -34,6 +36,7 @@ struct ChatMessageBubble: View {
                     Text(message.senderUsername)
                         .font(.caption)
                         .foregroundColor(.secondary)
+                        .onTapGesture { showingProfile = true }
                 }
                 
                 Text(message.content)
@@ -50,17 +53,21 @@ struct ChatMessageBubble: View {
             .frame(maxWidth: 250, alignment: isCurrentUser ? .trailing : .leading)
             
             if isCurrentUser {
-                // Current user's photo on right
+                // Current user's photo on right — tappable
                 ProfilePhotoView(
                     imageData: profileImageData,
                     displayName: message.senderUsername,
                     size: 32
                 )
+                .onTapGesture { showingProfile = true }
             }
         }
         .frame(maxWidth: .infinity, alignment: isCurrentUser ? .trailing : .leading)
         .task {
             await loadProfilePhoto()
+        }
+        .sheet(isPresented: $showingProfile) {
+            PlayerProfileView(ownerRecordName: message.senderRecordName)
         }
     }
     

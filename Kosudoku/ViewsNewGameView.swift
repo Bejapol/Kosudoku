@@ -14,11 +14,12 @@ struct NewGameView: View {
     @State private var selectedDifficulty: DifficultyLevel = .medium
     @State private var selectedFriends: Set<String> = []
     @State private var isCreating = false
-    @State private var createdGameManager: GameManager?
-    @State private var showingGameView = false
     @State private var errorMessage: String?
     @State private var showingError = false
     @Query private var friendships: [Friendship]
+    
+    /// Callback when a game is created. Parameters: (GameManager, isMultiplayer)
+    var onGameCreated: ((GameManager, Bool) -> Void)?
     
     var body: some View {
         NavigationStack {
@@ -82,11 +83,6 @@ struct NewGameView: View {
                         .background(Color(.systemBackground).opacity(0.8))
                 }
             }
-            .navigationDestination(isPresented: $showingGameView) {
-                if let manager = createdGameManager {
-                    GameView(gameManager: manager)
-                }
-            }
             .alert("Error Creating Game", isPresented: $showingError) {
                 Button("OK") {
                     errorMessage = nil
@@ -126,6 +122,8 @@ struct NewGameView: View {
     private func createGame() async {
         isCreating = true
         
+        let isMultiplayer = !selectedFriends.isEmpty
+        
         print("🎮 Creating new game with difficulty: \(selectedDifficulty)")
         print("🎮 Invited players: \(selectedFriends)")
         
@@ -139,27 +137,23 @@ struct NewGameView: View {
             )
             print("✅ Game created successfully")
             
-            if selectedFriends.isEmpty {
-                // Solo game - start immediately
+            if isMultiplayer {
+                // Multiplayer game — stay in .waiting, host enters lobby
+                // joinGame() in createGame() already called startLobbyPolling()
+                print("🎮 Multiplayer game created, entering lobby")
+            } else {
+                // Solo game — start immediately
                 print("🎮 Starting solo game...")
                 try await gameManager.startGame()
                 print("✅ Game started successfully")
-            } else {
-                // Multiplayer game - start immediately for the host too
-                // Friends will join the already-active game
-                print("🎮 Starting multiplayer game...")
-                try await gameManager.startGame()
-                print("✅ Multiplayer game started, waiting for friends to join")
             }
             
-            // Store the game manager and show the game view
-            createdGameManager = gameManager
             isCreating = false
             dismiss()
             
-            // Navigate to game view after dismissing the sheet
+            // Notify the parent to handle navigation
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                showingGameView = true
+                onGameCreated?(gameManager, isMultiplayer)
             }
         } catch let error as GameError {
             print("❌ GameError creating game: \(error.localizedDescription)")

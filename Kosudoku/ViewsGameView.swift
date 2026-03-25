@@ -16,6 +16,7 @@ struct GameView: View {
     @State private var showingChat = false
     @State private var showingCancelAlert = false
     @State private var showingCompletionAlert = false
+    @State private var showingEndOverlay = false
     @State private var viewMode: ViewMode = .balanced
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -268,6 +269,13 @@ struct GameView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .overlay {
+            if showingEndOverlay, let result = gameManager.gameEndResult {
+                GameEndOverlay(result: result)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -358,13 +366,13 @@ struct GameView: View {
         }
         .onChange(of: gameManager.currentGame?.status) { _, newStatus in
             if newStatus == .completed {
-                showingCompletionAlert = true
+                showEndSequence()
             }
         }
         .onChange(of: gameManager.isGameActive) { oldValue, newValue in
             // Also trigger on isGameActive changing from true to false (game ended)
             if oldValue && !newValue && gameManager.currentGame?.status == .completed {
-                showingCompletionAlert = true
+                showEndSequence()
             }
         }
         .onAppear {
@@ -377,6 +385,23 @@ struct GameView: View {
             // Sync immediately when returning from background
             if newPhase == .active && !isViewingCompleted {
                 gameManager.triggerSync()
+            }
+        }
+    }
+    
+    /// Show the win/loss overlay, then after it finishes, show the completion alert
+    private func showEndSequence() {
+        guard !showingEndOverlay && !showingCompletionAlert else { return }
+        withAnimation(.easeIn(duration: 0.3)) {
+            showingEndOverlay = true
+        }
+        // Let the overlay animate for 2.5s, then dismiss it and show the alert
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                showingEndOverlay = false
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                showingCompletionAlert = true
             }
         }
     }
@@ -432,51 +457,12 @@ struct CompletedGameResultsView: View {
             if !rankedPlayers.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(Array(rankedPlayers.enumerated()), id: \.element.id) { index, player in
-                        let playerColor = playerColorMap[player.playerRecordName]?.color ?? .blue
-                        let isCurrentUser = player.playerRecordName == currentPlayer?.playerRecordName
-                        
-                        HStack(spacing: 12) {
-                            // Position
-                            PositionBadge(position: index + 1)
-                                .frame(width: 32)
-                            
-                            // Player name
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(player.playerUsername)
-                                    .font(.subheadline)
-                                    .bold(isCurrentUser)
-                                    .foregroundColor(playerColor)
-                                
-                                HStack(spacing: 8) {
-                                    Label("\(player.correctGuesses)", systemImage: "checkmark.circle.fill")
-                                        .font(.caption2)
-                                        .foregroundColor(.green)
-                                    Label("\(player.incorrectGuesses)", systemImage: "xmark.circle.fill")
-                                        .font(.caption2)
-                                        .foregroundColor(.red)
-                                    Text("\(player.cellsCompleted.count) cells")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            
-                            Spacer()
-                            
-                            // Score
-                            Text("\(player.score)")
-                                .font(.title3)
-                                .bold()
-                                .foregroundColor(playerColor)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(playerColor, lineWidth: 2)
-                                )
-                        }
-                        .padding(.horizontal)
-                        .padding(.vertical, 8)
-                        .background(isCurrentUser ? playerColor.opacity(0.05) : Color.clear)
+                        CompletedGamePlayerRow(
+                            player: player,
+                            position: index + 1,
+                            isCurrentUser: player.playerRecordName == currentPlayer?.playerRecordName,
+                            playerColor: playerColorMap[player.playerRecordName]?.color ?? .blue
+                        )
                         
                         if index < rankedPlayers.count - 1 {
                             Divider()
@@ -504,6 +490,63 @@ struct CompletedGameResultsView: View {
             .padding(.horizontal)
         }
         .padding(.vertical, 16)
+    }
+}
+
+struct CompletedGamePlayerRow: View {
+    let player: PlayerGameState
+    let position: Int
+    let isCurrentUser: Bool
+    let playerColor: Color
+    @State private var showingProfile = false
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Position
+            PositionBadge(position: position)
+                .frame(width: 32)
+            
+            // Player name — tappable
+            VStack(alignment: .leading, spacing: 2) {
+                Text(player.playerUsername)
+                    .font(.subheadline)
+                    .bold(isCurrentUser)
+                    .foregroundColor(playerColor)
+                
+                HStack(spacing: 8) {
+                    Label("\(player.correctGuesses)", systemImage: "checkmark.circle.fill")
+                        .font(.caption2)
+                        .foregroundColor(.green)
+                    Label("\(player.incorrectGuesses)", systemImage: "xmark.circle.fill")
+                        .font(.caption2)
+                        .foregroundColor(.red)
+                    Text("\(player.cellsCompleted.count) cells")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .onTapGesture { showingProfile = true }
+            
+            Spacer()
+            
+            // Score
+            Text("\(player.score)")
+                .font(.title3)
+                .bold()
+                .foregroundColor(playerColor)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(playerColor, lineWidth: 2)
+                )
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(isCurrentUser ? playerColor.opacity(0.05) : Color.clear)
+        .sheet(isPresented: $showingProfile) {
+            PlayerProfileView(ownerRecordName: player.playerRecordName)
+        }
     }
 }
 
@@ -581,6 +624,102 @@ struct NumberButton: View {
                 .background(isSelected ? Color.blue : Color(.systemGray5))
                 .foregroundColor(isSelected ? .white : .primary)
                 .cornerRadius(8)
+        }
+    }
+}
+
+// MARK: - Game End Overlay
+
+struct GameEndOverlay: View {
+    let result: GameManager.GameEndResult
+    
+    @State private var scale: CGFloat = 0.1
+    @State private var rotation: Double = -15
+    @State private var opacity: Double = 0
+    @State private var bounceOffset: CGFloat = 0
+    
+    private var text: String {
+        switch result {
+        case .won: return "YOU WON!"
+        case .lost: return "YOU LOST!"
+        }
+    }
+    
+    private var colors: [Color] {
+        switch result {
+        case .won: return [.yellow, .orange, .yellow]
+        case .lost: return [.red, .purple, .red]
+        }
+    }
+    
+    private var shadowColor: Color {
+        switch result {
+        case .won: return .orange
+        case .lost: return .red
+        }
+    }
+    
+    var body: some View {
+        ZStack {
+            // Dim background
+            Color.black.opacity(opacity * 0.4)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Main text with cartoon styling
+                Text(text)
+                    .font(.system(size: 56, weight: .black, design: .rounded))
+                    .italic()
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: colors,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .shadow(color: shadowColor.opacity(0.8), radius: 0, x: 3, y: 3)
+                    .shadow(color: .black.opacity(0.5), radius: 8, x: 0, y: 4)
+                    .overlay {
+                        // Stroke outline effect
+                        Text(text)
+                            .font(.system(size: 56, weight: .black, design: .rounded))
+                            .italic()
+                            .foregroundColor(.clear)
+                            .overlay {
+                                Text(text)
+                                    .font(.system(size: 56, weight: .black, design: .rounded))
+                                    .italic()
+                                    .foregroundStyle(.white.opacity(0.3))
+                                    .blur(radius: 2)
+                            }
+                    }
+                    .scaleEffect(scale)
+                    .rotationEffect(.degrees(rotation))
+                    .offset(y: bounceOffset)
+            }
+            .opacity(opacity)
+        }
+        .onAppear {
+            // Pop in with overshoot
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.5, blendDuration: 0)) {
+                scale = 1.0
+                rotation = -3
+                opacity = 1.0
+            }
+            
+            // Subtle bounce settle
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6).delay(0.5)) {
+                rotation = 2
+            }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7).delay(0.8)) {
+                rotation = 0
+            }
+            
+            // Fade out
+            withAnimation(.easeIn(duration: 0.6).delay(1.8)) {
+                opacity = 0
+                scale = 1.15
+            }
         }
     }
 }

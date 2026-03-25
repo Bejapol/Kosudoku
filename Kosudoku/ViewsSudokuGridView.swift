@@ -79,6 +79,11 @@ struct SudokuGridView: View {
                     }
                     .id(effect.id)
                     .position(x: x, y: y)
+                    
+                    // Floating points label
+                    PointsFloatEffect(points: effect.points, isCorrect: effect.kind == .correct)
+                        .id("pts-\(effect.id)")
+                        .position(x: x, y: y)
                 }
             }
         }
@@ -296,6 +301,39 @@ struct IncorrectCellEffect: View {
                 onComplete()
             }
         }
+    }
+}
+
+/// Floating "+N" or "-N" label that drifts up (correct) or down (incorrect) and fades out
+struct PointsFloatEffect: View {
+    let points: Int
+    let isCorrect: Bool
+    
+    @State private var offsetY: CGFloat = 0
+    @State private var opacity: Double = 1.0
+    
+    private var label: String {
+        if points >= 0 {
+            return "+\(points)"
+        } else {
+            return "\(points)"
+        }
+    }
+    
+    var body: some View {
+        Text(label)
+            .font(.system(size: 14, weight: .bold, design: .rounded))
+            .foregroundColor(isCorrect ? .green : .red)
+            .shadow(color: .black.opacity(0.3), radius: 1, x: 0, y: 1)
+            .offset(y: offsetY)
+            .opacity(opacity)
+            .allowsHitTesting(false)
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.0)) {
+                    offsetY = isCorrect ? -40 : 40
+                    opacity = 0
+                }
+            }
     }
 }
 

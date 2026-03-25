@@ -104,6 +104,10 @@
         {
           "name": "invitedPlayers",
           "type": "STRING_LIST"
+        },
+        {
+          "name": "declinedPlayers",
+          "type": "STRING_LIST"
         }
       ],
       "indexes": [

@@ -185,6 +185,7 @@ struct LeaderboardRowView: View {
     let playerColor: Color
     @State private var profileImageData: Data?
     @State private var cloudKitService = CloudKitService.shared
+    @State private var showingProfile = false
     
     var body: some View {
         HStack(spacing: 12) {
@@ -192,12 +193,13 @@ struct LeaderboardRowView: View {
             PositionBadge(position: position)
                 .frame(width: 40)
             
-            // Profile photo
+            // Profile photo — tappable
             ProfilePhotoView(
                 imageData: profileImageData,
                 displayName: player.playerUsername,
                 size: 36
             )
+            .onTapGesture { showingProfile = true }
             
             // Player info
             VStack(alignment: .leading, spacing: 4) {
@@ -205,6 +207,7 @@ struct LeaderboardRowView: View {
                     .font(.subheadline)
                     .bold(isCurrentUser)
                     .foregroundColor(isCurrentUser ? playerColor : .primary)
+                    .onTapGesture { showingProfile = true }
                 
                 HStack(spacing: 12) {
                     Label("\(player.correctGuesses)", systemImage: "checkmark.circle.fill")
@@ -247,20 +250,38 @@ struct LeaderboardRowView: View {
         .task {
             await loadProfilePhoto()
         }
+        .sheet(isPresented: $showingProfile) {
+            PlayerProfileView(ownerRecordName: player.playerRecordName)
+        }
     }
+    
+    // Cache profile photos to avoid refetching on every sync cycle
+    private static var photoCache: [String: Data] = [:]
     
     // Fetch profile photo from CloudKit
     private func loadProfilePhoto() async {
-        // If it's the current user, use their local profile
-        if isCurrentUser, let currentProfile = cloudKitService.currentUserProfile {
-            profileImageData = currentProfile.avatarImageData
+        // Check cache first
+        if let cached = Self.photoCache[player.playerRecordName] {
+            if profileImageData == nil { profileImageData = cached }
             return
         }
         
-        // For other users, fetch from CloudKit by record name
+        // If it's the current user, use their local profile
+        if isCurrentUser, let currentProfile = cloudKitService.currentUserProfile {
+            profileImageData = currentProfile.avatarImageData
+            if let data = currentProfile.avatarImageData {
+                Self.photoCache[player.playerRecordName] = data
+            }
+            return
+        }
+        
+        // For other users, look up by ownerRecordName (the iCloud user record name)
         do {
-            if let profile = try await cloudKitService.fetchUserProfileObject(recordName: player.playerRecordName) {
+            if let profile = try await cloudKitService.fetchUserProfileByOwner(ownerRecordName: player.playerRecordName) {
                 profileImageData = profile.avatarImageData
+                if let data = profile.avatarImageData {
+                    Self.photoCache[player.playerRecordName] = data
+                }
             }
         } catch {
             print("Failed to load profile photo for \(player.playerUsername): \(error)")

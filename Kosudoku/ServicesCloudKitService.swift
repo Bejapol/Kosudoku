@@ -254,6 +254,7 @@ class CloudKitService {
         record["status"] = session.status.rawValue
         record["createdAt"] = session.createdAt
         record["invitedPlayers"] = session.invitedPlayers as CKRecordValue
+        record["declinedPlayers"] = session.declinedPlayers as CKRecordValue
         
         do {
             let savedRecord = try await publicDatabase.save(record)
@@ -280,6 +281,7 @@ class CloudKitService {
         
         record["status"] = session.status.rawValue
         record["puzzleData"] = session.puzzleData
+        record["declinedPlayers"] = session.declinedPlayers as CKRecordValue
         if let startedAt = session.startedAt {
             record["startedAt"] = startedAt
         }
@@ -391,11 +393,25 @@ class CloudKitService {
             let recordID = CKRecord.ID(recordName: existingRecordName)
             record = try await publicDatabase.record(for: recordID)
         } else {
-            // Create new record
-            record = CKRecord(recordType: RecordType.playerGameState.rawValue)
-            // Set the game session reference only on creation
+            // Before creating a new record, check if one already exists for this player+game
+            // to prevent duplicates from race conditions (e.g. joinGame called twice quickly)
             let gameRecordID = CKRecord.ID(recordName: gameRecordName)
-            record["gameSession"] = CKRecord.Reference(recordID: gameRecordID, action: .deleteSelf)
+            let reference = CKRecord.Reference(recordID: gameRecordID, action: .none)
+            let predicate = NSPredicate(format: "gameSession == %@ AND playerRecordName == %@", reference, state.playerRecordName)
+            let query = CKQuery(recordType: RecordType.playerGameState.rawValue, predicate: predicate)
+            
+            if let (matchResults, _) = try? await publicDatabase.records(matching: query),
+               let existingRecord = matchResults.compactMap({ _, result in try? result.get() }).first {
+                // Found existing record — reuse it instead of creating a duplicate
+                record = existingRecord
+                state.cloudKitRecordName = existingRecord.recordID.recordName
+                print("🎮 savePlayerState: found existing record, reusing instead of creating duplicate")
+            } else {
+                // Create new record
+                record = CKRecord(recordType: RecordType.playerGameState.rawValue)
+                // Set the game session reference only on creation
+                record["gameSession"] = CKRecord.Reference(recordID: gameRecordID, action: .deleteSelf)
+            }
         }
         
         record["playerRecordName"] = state.playerRecordName

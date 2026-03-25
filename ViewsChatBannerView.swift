@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// In-app banner that appears at the top of the screen when a new chat message arrives
+/// In-app banner that appears at the top of the screen for notifications
 struct ChatBannerView: View {
     let banner: ChatBannerNotification
     let onTap: () -> Void
@@ -15,15 +15,33 @@ struct ChatBannerView: View {
     
     @State private var offset: CGFloat = 0
     
+    private var iconName: String {
+        switch banner.bannerType {
+        case .gameChat: return "gamecontroller.fill"
+        case .groupChat: return "person.3.fill"
+        case .friendRequest: return "person.badge.plus"
+        case .gameInvite: return "envelope.fill"
+        }
+    }
+    
+    private var iconGradient: AnyGradient {
+        switch banner.bannerType {
+        case .gameChat: return Color.orange.gradient
+        case .groupChat: return Color.green.gradient
+        case .friendRequest: return Color.purple.gradient
+        case .gameInvite: return Color.orange.gradient
+        }
+    }
+    
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: banner.chatType == .game ? "gamecontroller.fill" : "person.3.fill")
+            Image(systemName: iconName)
                 .font(.title3)
                 .foregroundStyle(.white)
                 .frame(width: 36, height: 36)
                 .background(
                     Circle()
-                        .fill(banner.chatType == .game ? Color.orange.gradient : Color.green.gradient)
+                        .fill(iconGradient)
                 )
             
             VStack(alignment: .leading, spacing: 2) {
@@ -93,7 +111,7 @@ struct ChatBannerView: View {
             banner: ChatBannerNotification(
                 senderUsername: "TestUser",
                 content: "Hey, nice move!",
-                chatType: .game,
+                bannerType: .gameChat,
                 chatIdentifier: "test",
                 timestamp: Date()
             ),

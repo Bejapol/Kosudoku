@@ -44,6 +44,9 @@ final class GameSession {
     // Invited players (CloudKit record names)
     var invitedPlayers: [String] = []
     
+    // Players who declined the invitation
+    var declinedPlayers: [String] = []
+    
     init(hostRecordName: String, difficulty: DifficultyLevel, puzzleData: String, solutionData: String, invitedPlayers: [String] = []) {
         self.id = UUID()
         self.createdAt = Date()

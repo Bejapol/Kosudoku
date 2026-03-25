@@ -18,6 +18,7 @@ struct CellEffect: Equatable {
     let kind: Kind
     let value: Int        // the digit that was guessed
     let color: Color      // the player's color
+    let points: Int       // points earned (+) or lost (-) for the floating label
     let id: UUID = UUID() // unique so SwiftUI detects each new effect
     
     static func == (lhs: CellEffect, rhs: CellEffect) -> Bool {
@@ -46,15 +47,25 @@ class GameManager {
     var playerColorMap: [String: PlayerColor] = [:]
     var lastCellEffect: CellEffect?
     
+    /// Result shown at game end (nil while playing)
+    enum GameEndResult { case won, lost }
+    var gameEndResult: GameEndResult?
+    
+    // Lobby state
+    var acceptedPlayers: [PlayerGameState] = []
+    var isWaitingInLobby = false
+    
     private var selectionDirty = false
     private var isSyncing = false
     private var isMakingMove = false
+    private var isJoining = false
     
     private let cloudKit = CloudKitService.shared
     private let modelContext: ModelContext
     
     // Timer for periodic sync
     private var syncTimer: Timer?
+    private var lobbyTimer: Timer?
     
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -129,6 +140,10 @@ class GameManager {
     
     /// Join an existing game (or rejoin if already joined)
     func joinGame(_ session: GameSession) async throws {
+        guard !isJoining else { return }
+        isJoining = true
+        defer { isJoining = false }
+        
         guard let playerRecordName = cloudKit.currentUserRecordName,
               let username = cloudKit.currentUserProfile?.username else {
             throw GameError.notAuthenticated
@@ -171,8 +186,9 @@ class GameManager {
             // Subscribe to game updates (non-critical)
             try? await cloudKit.subscribeToGameUpdates(gameRecordName: gameRecordName)
             
-            // Subscribe to chat notifications for this game
+            // Subscribe to chat notifications and start monitoring for this game
             await ChatNotificationManager.shared.subscribeToGameChat(gameRecordName: gameRecordName)
+            ChatNotificationManager.shared.monitorGameChat(gameRecordName: gameRecordName)
             
             // If the game is already active, fetch the latest puzzleData from CloudKit
             if session.status == .active {
@@ -216,6 +232,11 @@ class GameManager {
             isGameActive = true
             startSyncTimer()
         }
+        
+        // If the game is still waiting, start lobby polling
+        if session.status == .waiting {
+            startLobbyPolling()
+        }
     }
     
     /// Start the game
@@ -251,6 +272,125 @@ class GameManager {
             )
             try await cloudKit.sendChatMessage(message, gameRecordName: gameRecordName)
         }
+    }
+    
+    // MARK: - Lobby
+    
+    /// Start polling CloudKit for lobby state (who has accepted, game status changes)
+    func startLobbyPolling() {
+        isWaitingInLobby = true
+        stopLobbyPolling()
+        lobbyTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            Task {
+                await self?.pollLobbyState()
+            }
+        }
+        // Run immediately once
+        Task { await pollLobbyState() }
+    }
+    
+    /// Poll CloudKit for lobby state changes
+    private func pollLobbyState() async {
+        guard let game = currentGame,
+              let gameRecordName = game.cloudKitRecordName else { return }
+        
+        // Check if game status changed on CloudKit (e.g. host started or cancelled)
+        if let gameRecord = try? await cloudKit.fetchGameSession(recordName: gameRecordName),
+           let statusRaw = gameRecord["status"] as? String,
+           let status = GameStatus(rawValue: statusRaw) {
+            
+            // Update declined players from CloudKit
+            if let declined = gameRecord["declinedPlayers"] as? [String] {
+                game.declinedPlayers = declined
+            }
+            
+            if status == .active && game.status == .waiting {
+                // Game was started (by host or auto-start)
+                game.status = .active
+                game.startedAt = gameRecord["startedAt"] as? Date ?? Date()
+                gameStartTime = game.startedAt
+                isGameActive = true
+                isWaitingInLobby = false
+                try? modelContext.save()
+                stopLobbyPolling()
+                startSyncTimer()
+                return
+            }
+            if status == .abandoned && game.status == .waiting {
+                game.status = .abandoned
+                isWaitingInLobby = false
+                try? modelContext.save()
+                stopLobbyPolling()
+                return
+            }
+        }
+        
+        // Fetch player states to see who has joined
+        do {
+            let records = try await cloudKit.fetchPlayerStates(gameRecordName: gameRecordName)
+            
+            var seenPlayers: Set<String> = []
+            var accepted: [PlayerGameState] = []
+            
+            let sortedRecords = records.sorted {
+                ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast)
+            }
+            
+            for record in sortedRecords {
+                guard let playerRecordName = record["playerRecordName"] as? String else { continue }
+                guard seenPlayers.insert(playerRecordName).inserted else { continue }
+                
+                let state = PlayerGameState(
+                    playerRecordName: playerRecordName,
+                    playerUsername: (record["playerUsername"] as? String) ?? "Unknown",
+                    gameSession: game
+                )
+                state.joinedAt = (record["joinedAt"] as? Date) ?? Date()
+                accepted.append(state)
+            }
+            
+            acceptedPlayers = accepted
+            
+            // Auto-start: only the host triggers to avoid race conditions
+            guard game.hostRecordName == cloudKit.currentUserRecordName else { return }
+            
+            let invitedSet = Set(game.invitedPlayers)
+            let acceptedSet = Set(accepted.map { $0.playerRecordName })
+            
+            if invitedSet.isSubset(of: acceptedSet) {
+                // All invited players have accepted — auto-start
+                try await startGame()
+                isWaitingInLobby = false
+                stopLobbyPolling()
+            }
+        } catch {
+            // Non-critical, will retry next poll
+        }
+    }
+    
+    func stopLobbyPolling() {
+        lobbyTimer?.invalidate()
+        lobbyTimer = nil
+    }
+    
+    /// Host manually starts the game before all players have accepted
+    func forceStartGame() async throws {
+        try await startGame()
+        isWaitingInLobby = false
+        stopLobbyPolling()
+    }
+    
+    /// Invited player declines a game invitation
+    func declineGame(_ session: GameSession) async throws {
+        guard let playerRecordName = cloudKit.currentUserRecordName else {
+            throw GameError.notAuthenticated
+        }
+        
+        if !session.declinedPlayers.contains(playerRecordName) {
+            session.declinedPlayers.append(playerRecordName)
+        }
+        try await cloudKit.updateGameSession(session)
+        try modelContext.save()
     }
     
     // MARK: - Game Actions
@@ -345,7 +485,7 @@ class GameManager {
             // Play correct chime and trigger visual effect
             GameSoundManager.shared.playCorrectSound()
             let effectColor = playerColorMap[playerState.playerRecordName]?.color ?? PlayerColor.coral.color
-            lastCellEffect = CellEffect(row: row, col: col, kind: .correct, value: value, color: effectColor)
+            lastCellEffect = CellEffect(row: row, col: col, kind: .correct, value: value, color: effectColor, points: points)
             
         } else {
             // Incorrect guess
@@ -356,7 +496,7 @@ class GameManager {
             // Play incorrect buzzer and trigger visual effect
             GameSoundManager.shared.playIncorrectSound()
             let effectColor = playerColorMap[playerState.playerRecordName]?.color ?? PlayerColor.coral.color
-            lastCellEffect = CellEffect(row: row, col: col, kind: .incorrect, value: value, color: effectColor)
+            lastCellEffect = CellEffect(row: row, col: col, kind: .incorrect, value: value, color: effectColor, points: ScoringSystem.pointsForIncorrectGuess())
         }
         
         // Save locally
@@ -456,29 +596,45 @@ class GameManager {
         game.completedAt = Date()
         isGameActive = false
         
-        // Calculate final score for this game only
-        let gameScore: Int
+        // Add speed bonus to the accumulated per-move score
         if let startTime = gameStartTime {
             let timeElapsed = Date().timeIntervalSince(startTime)
-            gameScore = ScoringSystem.calculateFinalScore(
-                correctGuesses: playerState.correctGuesses,
-                incorrectGuesses: playerState.incorrectGuesses,
+            let speedPoints = ScoringSystem.speedBonus(
                 cellsCompleted: playerState.cellsCompleted.count,
-                difficulty: game.difficulty,
-                timeElapsed: timeElapsed,
-                finishPosition: 1 // TODO: Determine actual position
+                timeElapsed: timeElapsed
             )
-        } else {
-            // Fallback: use the accumulated score from gameplay
-            gameScore = playerState.score
+            playerState.score += speedPoints
         }
-        playerState.score = gameScore
         
-        // Update user profile stats (add only the game score, not the total)
+        // Determine if this player won (completed the most cells)
+        let isWinner: Bool
+        if otherPlayers.isEmpty {
+            // Solo game — always a "win"
+            isWinner = true
+        } else {
+            let myCells = playerState.cellsCompleted.count
+            let maxOtherCells = otherPlayers.map(\.cellsCompleted.count).max() ?? 0
+            isWinner = myCells >= maxOtherCells
+        }
+        
+        // First place bonus only if actually won in multiplayer
+        if isWinner {
+            playerState.score += ScoringSystem.firstPlaceBonus
+        }
+        
+        // Set end result for the overlay animation
+        gameEndResult = isWinner ? .won : .lost
+        
+        // Ensure score doesn't go negative
+        playerState.score = max(0, playerState.score)
+        
+        // Update user profile stats
         if let profile = cloudKit.currentUserProfile {
-            profile.totalScore += gameScore
+            profile.totalScore += playerState.score
             profile.gamesPlayed += 1
-            profile.gamesWon += 1
+            if isWinner {
+                profile.gamesWon += 1
+            }
         }
         
         // Save locally first so stats persist regardless of CloudKit
@@ -487,6 +643,9 @@ class GameManager {
         // Sync to CloudKit (don't let failures lose local data)
         if let profile = cloudKit.currentUserProfile {
             try? await cloudKit.saveUserProfile(profile)
+        }
+        if let gameRecordName = game.cloudKitRecordName {
+            try? await cloudKit.savePlayerState(playerState, gameRecordName: gameRecordName)
         }
         try? await cloudKit.updateGameSession(game)
         
@@ -654,29 +813,30 @@ class GameManager {
                 // already updated theirs in completeGame())
                 if let playerState = currentPlayerState,
                    let profile = cloudKit.currentUserProfile {
-                    // Calculate final score for this player
+                    // Add speed bonus to accumulated score
                     if let startTime = gameStartTime {
                         let timeElapsed = Date().timeIntervalSince(startTime)
-                        let gameScore = ScoringSystem.calculateFinalScore(
-                            correctGuesses: playerState.correctGuesses,
-                            incorrectGuesses: playerState.incorrectGuesses,
+                        let speedPoints = ScoringSystem.speedBonus(
                             cellsCompleted: playerState.cellsCompleted.count,
-                            difficulty: game.difficulty,
-                            timeElapsed: timeElapsed,
-                            finishPosition: nil
+                            timeElapsed: timeElapsed
                         )
-                        playerState.score = gameScore
+                        playerState.score += speedPoints
                     }
+                    playerState.score = max(0, playerState.score)
                     
                     profile.totalScore += playerState.score
                     profile.gamesPlayed += 1
                     // Don't count as a win — the other player completed it
                     
                     try? await cloudKit.saveUserProfile(profile)
+                    if let gameRecordName = game.cloudKitRecordName {
+                        try? await cloudKit.savePlayerState(playerState, gameRecordName: gameRecordName)
+                    }
                 }
                 
                 try? modelContext.save()
                 await MainActor.run {
+                    self.gameEndResult = .lost
                     self.isGameActive = false
                 }
                 stopSyncTimer()
@@ -753,9 +913,19 @@ class GameManager {
             let records = try await cloudKit.fetchPlayerStates(gameRecordName: gameRecordName)
             let currentUserRecordName = cloudKit.currentUserRecordName
             
+            // Deduplicate by playerRecordName — keep the most recently modified
+            // record for each player (there may be duplicates from race conditions)
+            let sortedRecords = records.sorted {
+                ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast)
+            }
+            var seenPlayers: Set<String> = []
             var allPlayers: [PlayerGameState] = []
-            for record in records {
+            
+            for record in sortedRecords {
                 guard let playerRecordName = record["playerRecordName"] as? String else { continue }
+                
+                // Skip duplicates — keep only the first (most recent) record per player
+                guard seenPlayers.insert(playerRecordName).inserted else { continue }
                 
                 let state = PlayerGameState(
                     playerRecordName: playerRecordName,
@@ -792,14 +962,18 @@ class GameManager {
         }
         
         stopSyncTimer()
+        stopLobbyPolling()
         currentGame = nil
         currentPlayerState = nil
         currentBoard = nil
         solutionBoard = nil
         otherPlayers = []
+        acceptedPlayers = []
         selectedCell = nil
         isGameActive = false
+        isWaitingInLobby = false
         gameStartTime = nil
+        gameEndResult = nil
     }
     
     /// Check if the current user is the only player in the game

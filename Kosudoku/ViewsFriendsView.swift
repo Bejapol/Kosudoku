@@ -27,13 +27,16 @@ struct FriendsView: View {
                             .foregroundColor(.secondary)
                     } else {
                         ForEach(acceptedFriends, id: \.id) { friendship in
-                            Button {
-                                friendToRemove = friendship
-                                showingRemoveAlert = true
-                            } label: {
-                                FriendRow(friendship: friendship)
+                            FriendRow(
+                                friendship: friendship,
+                                otherRecordName: otherPersonRecordName(friendship)
+                            )
+                            .swipeActions(edge: .trailing) {
+                                Button("Remove", role: .destructive) {
+                                    friendToRemove = friendship
+                                    showingRemoveAlert = true
+                                }
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -105,6 +108,16 @@ struct FriendsView: View {
                     Text("Are you sure you want to remove \(friendship.friendDisplayName) from your friends?")
                 }
             }
+        }
+    }
+    
+    /// Returns the owner record name of the other person in the friendship
+    private func otherPersonRecordName(_ friendship: Friendship) -> String {
+        let currentUser = cloudKitService.currentUserRecordName ?? ""
+        if friendship.userRecordName == currentUser {
+            return friendship.friendRecordName
+        } else {
+            return friendship.userRecordName
         }
     }
     
@@ -250,27 +263,59 @@ struct FriendsView: View {
 
 struct FriendRow: View {
     let friendship: Friendship
+    let otherRecordName: String
+    @State private var showingProfile = false
+    @State private var profileImageData: Data?
+    @State private var cloudKitService = CloudKitService.shared
+    
+    // Static cache for friend profile photos
+    private static var photoCache: [String: Data] = [:]
     
     var body: some View {
-        HStack {
-            Circle()
-                .fill(Color.blue.gradient)
-                .frame(width: 40, height: 40)
-                .overlay {
-                    Text(friendship.friendDisplayName.prefix(1))
-                        .foregroundColor(.white)
+        Button {
+            showingProfile = true
+        } label: {
+            HStack {
+                ProfilePhotoView(
+                    imageData: profileImageData,
+                    displayName: friendship.friendDisplayName,
+                    size: 40
+                )
+                
+                VStack(alignment: .leading) {
+                    Text(friendship.friendDisplayName)
                         .font(.headline)
+                    Text("@\(friendship.friendUsername)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
-            
-            VStack(alignment: .leading) {
-                Text(friendship.friendDisplayName)
-                    .font(.headline)
-                Text("@\(friendship.friendUsername)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                
+                Spacer()
             }
-            
-            Spacer()
+        }
+        .buttonStyle(.plain)
+        .task {
+            await loadPhoto()
+        }
+        .sheet(isPresented: $showingProfile) {
+            PlayerProfileView(ownerRecordName: otherRecordName)
+        }
+    }
+    
+    private func loadPhoto() async {
+        if let cached = Self.photoCache[otherRecordName] {
+            if profileImageData == nil { profileImageData = cached }
+            return
+        }
+        do {
+            if let profile = try await cloudKitService.fetchUserProfileByOwner(ownerRecordName: otherRecordName) {
+                profileImageData = profile.avatarImageData
+                if let data = profile.avatarImageData {
+                    Self.photoCache[otherRecordName] = data
+                }
+            }
+        } catch {
+            print("Failed to load friend photo: \(error)")
         }
     }
 }

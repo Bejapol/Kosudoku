@@ -31,8 +31,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     
     // MARK: - UNUserNotificationCenterDelegate
     
-    // Suppress system banner when app is in foreground (our custom banner handles it)
+    // When app is in foreground: suppress system banner (our custom in-app banner handles it)
+    // When app is in background: this method is NOT called, so iOS shows system notification normally
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        // Forward to our notification manager for in-app banner display
+        let userInfo = notification.request.content.userInfo
+        let info = userInfo.compactMapKeys { $0 as? String }
+        _ = await ChatNotificationManager.shared.handleNotification(userInfo: info)
+        // Return empty so iOS doesn't also show a system banner on top of ours
         return []
     }
     
