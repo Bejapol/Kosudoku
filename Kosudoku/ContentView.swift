@@ -212,6 +212,10 @@ struct ContentView: View {
         // Subscribe to friend requests and game invites
         await notificationManager.subscribeToFriendRequests()
         await notificationManager.subscribeToGameInvites()
+        
+        // Always start the poll loop so friend requests, game invites,
+        // and new group chats are detected even if no chats exist yet
+        notificationManager.startPolling()
     }
     
     /// Fetch existing messages from all chats so we don't show banners for old messages

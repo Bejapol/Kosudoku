@@ -154,24 +154,6 @@ struct GameView: View {
                             }
                         }
                         
-                        // Clear button
-                        Button {
-                            // Clear cell
-                            if let cell = gameManager.selectedCell,
-                               var board = gameManager.currentBoard,
-                               !board[cell.row, cell.col].isFixed {
-                                board[cell.row, cell.col].value = nil
-                                gameManager.currentBoard = board
-                            }
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.title3)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Color(.systemGray5))
-                                .cornerRadius(8)
-                        }
-                        
                         // Hint button (only for solo players)
                         if gameManager.isOnlyPlayer {
                             Button {
@@ -229,23 +211,6 @@ struct GameView: View {
                                     }
                                 }
                             }
-                        }
-                        
-                        // Clear button
-                        Button {
-                            if let cell = gameManager.selectedCell,
-                               var board = gameManager.currentBoard,
-                               !board[cell.row, cell.col].isFixed {
-                                board[cell.row, cell.col].value = nil
-                                gameManager.currentBoard = board
-                            }
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.title3)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Color(.systemGray5))
-                                .cornerRadius(8)
                         }
                         
                         // Hint button (only for solo players)

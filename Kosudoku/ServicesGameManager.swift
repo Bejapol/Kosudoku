@@ -809,8 +809,17 @@ class GameManager {
                 game.status = .completed
                 game.completedAt = gameRecord["completedAt"] as? Date
                 
-                // Update this player's profile stats (the completing player
-                // already updated theirs in completeGame())
+                // Determine win/loss by comparing cells completed
+                // (updatedOtherPlayers was just fetched from CloudKit above)
+                let isWinner: Bool
+                if updatedOtherPlayers.isEmpty {
+                    isWinner = true
+                } else {
+                    let myCells = currentPlayerState?.cellsCompleted.count ?? 0
+                    let maxOtherCells = updatedOtherPlayers.map(\.cellsCompleted.count).max() ?? 0
+                    isWinner = myCells > maxOtherCells
+                }
+                
                 if let playerState = currentPlayerState,
                    let profile = cloudKit.currentUserProfile {
                     // Add speed bonus to accumulated score
@@ -822,11 +831,19 @@ class GameManager {
                         )
                         playerState.score += speedPoints
                     }
+                    
+                    // First place bonus if this player won
+                    if isWinner {
+                        playerState.score += ScoringSystem.firstPlaceBonus
+                    }
+                    
                     playerState.score = max(0, playerState.score)
                     
                     profile.totalScore += playerState.score
                     profile.gamesPlayed += 1
-                    // Don't count as a win — the other player completed it
+                    if isWinner {
+                        profile.gamesWon += 1
+                    }
                     
                     try? await cloudKit.saveUserProfile(profile)
                     if let gameRecordName = game.cloudKitRecordName {
@@ -836,7 +853,7 @@ class GameManager {
                 
                 try? modelContext.save()
                 await MainActor.run {
-                    self.gameEndResult = .lost
+                    self.gameEndResult = isWinner ? .won : .lost
                     self.isGameActive = false
                 }
                 stopSyncTimer()

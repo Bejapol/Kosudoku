@@ -162,6 +162,11 @@ class ChatNotificationManager {
         startPollingIfNeeded()
     }
     
+    /// Start the background poll loop unconditionally (call at app launch)
+    func startPolling() {
+        startPollingIfNeeded()
+    }
+    
     /// Start the background poll loop if not already running
     private func startPollingIfNeeded() {
         guard pollTask == nil else { return }
@@ -241,11 +246,63 @@ class ChatNotificationManager {
             }
         }
         
+        // Discover new group chats the user was added to
+        await discoverNewGroupChats()
+        
         // Poll for new friend requests
         await pollForFriendRequests()
         
         // Poll for new game invites
         await pollForGameInvites()
+    }
+    
+    /// Discover group chats from CloudKit that we aren't monitoring yet and start monitoring them
+    private func discoverNewGroupChats() async {
+        do {
+            let records = try await cloudKit.fetchGroupChats()
+            
+            for record in records {
+                // Use the groupChatID field (UUID string) as the chat identifier
+                guard let groupChatID = record["groupChatID"] as? String else { continue }
+                
+                // Skip if already monitored
+                guard !monitoredGroupChats.contains(groupChatID) else { continue }
+                
+                // New group chat — start monitoring
+                monitoredGroupChats.insert(groupChatID)
+                print("📬 Discovered new group chat to monitor: \(groupChatID)")
+                
+                // Seed existing messages as seen so we don't banner old ones
+                if let msgRecords = try? await cloudKit.fetchChatMessages(groupChatID: groupChatID, limit: 20) {
+                    let stableIDs = msgRecords.compactMap { msg -> String? in
+                        guard let sender = msg["senderRecordName"] as? String,
+                              let content = msg["content"] as? String else { return nil }
+                        let timestamp = (msg["timestamp"] as? Date) ?? Date()
+                        return "\(sender)|\(content)|\(Int(timestamp.timeIntervalSince1970))"
+                    }
+                    seenMessageIDs.formUnion(stableIDs)
+                }
+                
+                // Show a banner for the new group chat itself
+                let chatName = (record["name"] as? String) ?? "Group Chat"
+                var creatorName = "Someone"
+                if let creatorRecordName = record["creatorRecordName"] as? String,
+                   let profile = try? await cloudKit.fetchUserProfileByOwner(ownerRecordName: creatorRecordName) {
+                    creatorName = profile.username
+                }
+                
+                let banner = ChatBannerNotification(
+                    senderUsername: creatorName,
+                    content: "added you to \(chatName)",
+                    bannerType: .groupChat,
+                    chatIdentifier: groupChatID,
+                    timestamp: Date()
+                )
+                showBanner(banner)
+            }
+        } catch {
+            // Non-critical
+        }
     }
     
     /// Poll CloudKit for new pending friend requests directed at the current user
