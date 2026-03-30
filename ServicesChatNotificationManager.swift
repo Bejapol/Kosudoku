@@ -283,22 +283,25 @@ class ChatNotificationManager {
                     seenMessageIDs.formUnion(stableIDs)
                 }
                 
-                // Show a banner for the new group chat itself
-                let chatName = (record["name"] as? String) ?? "Group Chat"
-                var creatorName = "Someone"
-                if let creatorRecordName = record["creatorRecordName"] as? String,
-                   let profile = try? await cloudKit.fetchUserProfileByOwner(ownerRecordName: creatorRecordName) {
-                    creatorName = profile.username
+                // Show a banner for the new group chat — but not if we created it
+                let creatorRecordName = record["creatorRecordName"] as? String
+                if creatorRecordName != cloudKit.currentUserRecordName {
+                    let chatName = (record["name"] as? String) ?? "Group Chat"
+                    var creatorName = "Someone"
+                    if let crn = creatorRecordName,
+                       let profile = try? await cloudKit.fetchUserProfileByOwner(ownerRecordName: crn) {
+                        creatorName = profile.username
+                    }
+                    
+                    let banner = ChatBannerNotification(
+                        senderUsername: creatorName,
+                        content: "added you to \(chatName)",
+                        bannerType: .groupChat,
+                        chatIdentifier: groupChatID,
+                        timestamp: Date()
+                    )
+                    showBanner(banner)
                 }
-                
-                let banner = ChatBannerNotification(
-                    senderUsername: creatorName,
-                    content: "added you to \(chatName)",
-                    bannerType: .groupChat,
-                    chatIdentifier: groupChatID,
-                    timestamp: Date()
-                )
-                showBanner(banner)
             }
         } catch {
             // Non-critical

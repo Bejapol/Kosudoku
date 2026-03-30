@@ -53,6 +53,16 @@ struct ProfileView: View {
                     
                     Section("Statistics") {
                         HStack {
+                            Label("Quickets", systemImage: "ticket.fill")
+                                .foregroundColor(.orange)
+                            Spacer()
+                            Text("\(profile.quickets)")
+                                .font(.title3)
+                                .bold()
+                                .foregroundColor(.orange)
+                        }
+                        
+                        HStack {
                             Text("Total Score")
                             Spacer()
                             Text("\(profile.totalScore)")

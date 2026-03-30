@@ -14,8 +14,6 @@ struct LiveLeaderboardView: View {
     let playerColorMap: [String: PlayerColor]
     var difficulty: DifficultyLevel = .medium
     @State private var isExpanded = false
-    @State private var showScoringInfo = false
-    
     var allPlayers: [PlayerGameState] {
         var players = otherPlayers
         if let current = currentPlayer {
@@ -28,35 +26,22 @@ struct LiveLeaderboardView: View {
         VStack(spacing: 0) {
             // Compact view - just top scores
             if !isExpanded {
-                HStack(spacing: 0) {
-                    CompactLeaderboardView(
-                        players: Array(allPlayers.prefix(3)),
-                        currentPlayerRecordName: currentPlayer?.playerRecordName,
-                        playerColorMap: playerColorMap
-                    )
-                    .onTapGesture {
-                        withAnimation {
-                            isExpanded = true
-                        }
+                CompactLeaderboardView(
+                    players: Array(allPlayers.prefix(3)),
+                    currentPlayerRecordName: currentPlayer?.playerRecordName,
+                    playerColorMap: playerColorMap
+                )
+                .onTapGesture {
+                    withAnimation {
+                        isExpanded = true
                     }
-                    
-                    // Scoring info button
-                    Button {
-                        showScoringInfo = true
-                    } label: {
-                        Image(systemName: "info.circle")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.trailing, 8)
                 }
             } else {
                 // Expanded view - all players
                 ExpandedLeaderboardView(
                     players: allPlayers,
                     currentPlayerRecordName: currentPlayer?.playerRecordName,
-                    playerColorMap: playerColorMap,
-                    onInfoTap: { showScoringInfo = true }
+                    playerColorMap: playerColorMap
                 )
                 .onTapGesture {
                     withAnimation {
@@ -68,9 +53,6 @@ struct LiveLeaderboardView: View {
         .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(radius: 2)
-        .sheet(isPresented: $showScoringInfo) {
-            ScoringInfoView(difficulty: difficulty)
-        }
     }
 }
 
@@ -126,7 +108,6 @@ struct ExpandedLeaderboardView: View {
     let players: [PlayerGameState]
     let currentPlayerRecordName: String?
     let playerColorMap: [String: PlayerColor]
-    var onInfoTap: (() -> Void)? = nil
     
     var body: some View {
         VStack(spacing: 0) {
@@ -135,16 +116,6 @@ struct ExpandedLeaderboardView: View {
                 Text("Live Leaderboard")
                     .font(.headline)
                 Spacer()
-                
-                if let onInfoTap {
-                    Button {
-                        onInfoTap()
-                    } label: {
-                        Image(systemName: "info.circle")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
                 
                 Image(systemName: "chevron.up")
                     .font(.caption)
@@ -406,7 +377,7 @@ struct ScoringInfoView: View {
                     }
                 }
                 
-                Section("Finish Bonus") {
+                Section("Position Bonus") {
                     HStack {
                         Label("1st place", systemImage: "trophy.fill")
                             .foregroundColor(.yellow)
@@ -428,10 +399,27 @@ struct ScoringInfoView: View {
                         Text("+\(ScoringSystem.thirdPlaceBonus) pts")
                             .bold()
                     }
+                    Text("Position is determined by score before this bonus is applied. Ties are broken by: 1) fewer incorrect guesses, then 2) earliest last move.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Section("Quickets") {
+                    HStack {
+                        Label("Multiplayer Win", systemImage: "ticket.fill")
+                            .foregroundColor(.orange)
+                        Spacer()
+                        Text("+1 quicket")
+                            .bold()
+                            .foregroundColor(.orange)
+                    }
+                    Text("Quickets are only awarded for winning multiplayer games. Solo games do not award quickets. New players start with 5 quickets.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
                 
                 Section {
-                    Text("Your final score is the sum of all correct-guess points, minus incorrect-guess penalties, plus any speed and finish bonuses. The minimum score is 0.")
+                    Text("Your final score is the sum of all correct-guess points, minus incorrect-guess penalties, plus any speed and position bonuses. The minimum score is 0.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }

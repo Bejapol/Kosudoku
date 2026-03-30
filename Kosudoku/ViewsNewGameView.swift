@@ -11,7 +11,7 @@ import SwiftData
 struct NewGameView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedDifficulty: DifficultyLevel = .medium
+    @State private var selectedDifficulty: DifficultyLevel = .easy
     @State private var selectedFriends: Set<String> = []
     @State private var isCreating = false
     @State private var errorMessage: String?

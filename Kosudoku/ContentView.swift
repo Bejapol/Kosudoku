@@ -91,12 +91,15 @@ struct ContentView: View {
         }
         .task {
             await checkProfileSetup()
+            // Snapshot locally known friend request IDs BEFORE syncing from CloudKit.
+            // These are requests the user has already seen in a previous session.
+            let preSyncFriendIDs = Set(friendships.compactMap { $0.cloudKitRecordName })
             // Sync friendships from CloudKit so pending requests appear immediately
             await syncFriendshipsFromCloudKit()
             // Clean up CloudKit records for games completed/abandoned more than 24 hours ago
             await cloudKitService.cleanupOldGameRecords()
             // Subscribe to chat notifications for existing chats
-            await subscribeToExistingChats()
+            await subscribeToExistingChats(preSyncFriendIDs: preSyncFriendIDs)
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -189,10 +192,10 @@ struct ContentView: View {
     }
     
     /// Subscribe to CloudKit push notifications and start monitoring for all chats, friend requests, and game invites
-    private func subscribeToExistingChats() async {
+    private func subscribeToExistingChats(preSyncFriendIDs: Set<String> = []) async {
         // Seed seen items so we don't get banners for existing data
         await seedSeenMessages()
-        await seedSeenFriendRequests()
+        await seedSeenFriendRequests(preSyncFriendIDs: preSyncFriendIDs)
         await seedSeenGameInvites()
         
         // Subscribe and monitor group chats
@@ -247,17 +250,24 @@ struct ContentView: View {
         }
     }
     
-    /// Seed existing friend requests so we don't show banners for old requests
-    private func seedSeenFriendRequests() async {
-        // Mark all currently known friendships as seen
-        let friendRequestIDs = friendships.compactMap { $0.cloudKitRecordName }
-        notificationManager.markFriendRequestsSeen(friendRequestIDs)
+    /// Seed existing friend requests so we don't show banners for old requests.
+    /// Accepted friendships are always seeded. Pending requests are only seeded
+    /// if they were already known locally before the CloudKit sync (i.e., the user
+    /// saw them in a previous session). New pending requests that just arrived
+    /// will trigger banners.
+    private func seedSeenFriendRequests(preSyncFriendIDs: Set<String> = []) async {
+        // Mark all accepted friendships as seen
+        let acceptedIDs = friendships
+            .filter { $0.status == .accepted }
+            .compactMap { $0.cloudKitRecordName }
+        notificationManager.markFriendRequestsSeen(acceptedIDs)
         
-        // Also fetch from CloudKit to catch any we don't have locally
-        if let records = try? await cloudKitService.fetchFriendships() {
-            let recordNames = records.map { $0.recordID.recordName }
-            notificationManager.markFriendRequestsSeen(recordNames)
-        }
+        // Mark pending requests that the user already knew about (pre-sync) as seen
+        let preSyncPendingIDs = friendships
+            .filter { $0.status == .pending }
+            .compactMap { $0.cloudKitRecordName }
+            .filter { preSyncFriendIDs.contains($0) }
+        notificationManager.markFriendRequestsSeen(preSyncPendingIDs)
     }
     
     /// Seed existing game invites so we don't show banners for old invites
@@ -300,7 +310,17 @@ struct ContentView: View {
             return
         }
         
-        // No profile found, show setup
+        // No local profile — try to recover from CloudKit (e.g. after reinstall)
+        if let ownerRecordName = cloudKitService.currentUserRecordName,
+           let cloudProfile = try? await cloudKitService.fetchUserProfileByOwner(ownerRecordName: ownerRecordName) {
+            // Save to local SwiftData so future launches find it
+            modelContext.insert(cloudProfile)
+            try? modelContext.save()
+            cloudKitService.currentUserProfile = cloudProfile
+            return
+        }
+        
+        // No profile found anywhere, show setup
         showingProfileSetup = true
     }
 }

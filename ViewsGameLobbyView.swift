@@ -176,8 +176,17 @@ struct GameLobbyView: View {
             }
         }
         .onChange(of: gameManager.currentGame?.status) { _, status in
-            if status == .abandoned {
+            if status == .abandoned || status == .completed {
                 dismiss()
+            }
+        }
+        .onChange(of: showingGameView) { _, showing in
+            // When returning from GameView, auto-dismiss if game is done
+            if !showing {
+                let status = gameManager.currentGame?.status
+                if status == .completed || status == .abandoned {
+                    dismiss()
+                }
             }
         }
     }

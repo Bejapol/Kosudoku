@@ -17,6 +17,16 @@ struct NewChatView: View {
     @State private var cloudKitService = CloudKitService.shared
     @State private var isCreating = false
     
+    /// Returns the record name of the other person in the friendship
+    private func friendRecordName(for friendship: Friendship) -> String {
+        let currentUser = cloudKitService.currentUserRecordName ?? ""
+        if friendship.userRecordName == currentUser {
+            return friendship.friendRecordName
+        } else {
+            return friendship.userRecordName
+        }
+    }
+    
     var body: some View {
         NavigationStack {
             Form {
@@ -30,17 +40,18 @@ struct NewChatView: View {
                             .foregroundColor(.secondary)
                     } else {
                         ForEach(acceptedFriends, id: \.id) { friendship in
+                            let otherRecordName = friendRecordName(for: friendship)
                             HStack {
                                 Text(friendship.friendDisplayName)
                                 Spacer()
-                                if selectedMembers.contains(friendship.friendRecordName) {
+                                if selectedMembers.contains(otherRecordName) {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundColor(.blue)
                                 }
                             }
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                toggleMemberSelection(friendship.friendRecordName)
+                                toggleMemberSelection(otherRecordName)
                             }
                         }
                     }

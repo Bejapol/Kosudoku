@@ -15,8 +15,8 @@ struct GameView: View {
     @State private var isNotesMode = false
     @State private var showingChat = false
     @State private var showingCancelAlert = false
-    @State private var showingCompletionAlert = false
     @State private var showingEndOverlay = false
+    @State private var showingQuicketAnimation = false
     @State private var viewMode: ViewMode = .balanced
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -240,6 +240,11 @@ struct GameView: View {
                     .transition(.opacity)
                     .allowsHitTesting(false)
             }
+            if showingQuicketAnimation {
+                QuicketFloatOverlay(amount: 1)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -309,34 +314,13 @@ struct GameView: View {
                 GameChatView(gameSession: game)
             }
         }
-        .alert("Puzzle Complete!", isPresented: $showingCompletionAlert) {
-            Button("Done") {
-                gameManager.leaveGame()
-                dismiss()
-            }
-        } message: {
-            if let playerState = gameManager.currentPlayerState,
-               let game = gameManager.currentGame {
-                let timeText: String = {
-                    guard let start = game.startedAt, let end = game.completedAt else { return "" }
-                    let elapsed = Int(end.timeIntervalSince(start))
-                    let minutes = elapsed / 60
-                    let seconds = elapsed % 60
-                    return "\nTime: \(String(format: "%02d:%02d", minutes, seconds))"
-                }()
-                Text("Final Score: \(playerState.score)\nCorrect: \(playerState.correctGuesses) | Incorrect: \(playerState.incorrectGuesses)\(timeText)")
-            } else {
-                Text("Congratulations!")
-            }
-        }
-        .onChange(of: gameManager.currentGame?.status) { _, newStatus in
-            if newStatus == .completed {
+        .onChange(of: gameManager.gameEndResult) { _, newResult in
+            if newResult != nil {
                 showEndSequence()
             }
         }
-        .onChange(of: gameManager.isGameActive) { oldValue, newValue in
-            // Also trigger on isGameActive changing from true to false (game ended)
-            if oldValue && !newValue && gameManager.currentGame?.status == .completed {
+        .onReceive(NotificationCenter.default.publisher(for: .gameEndResultSet)) { _ in
+            if gameManager.gameEndResult != nil {
                 showEndSequence()
             }
         }
@@ -354,19 +338,38 @@ struct GameView: View {
         }
     }
     
-    /// Show the win/loss overlay, then after it finishes, show the completion alert
+    /// Show the win/loss overlay, then quicket animation (multiplayer wins only).
+    /// The game transitions to the results screen automatically after
+    /// the animations complete (GameManager sets game.status = .completed).
     private func showEndSequence() {
-        guard !showingEndOverlay && !showingCompletionAlert else { return }
+        guard !showingEndOverlay else { return }
+        
+        let showQuicket = gameManager.gameEndResult == .won && !gameManager.isOnlyPlayer
+        
         withAnimation(.easeIn(duration: 0.3)) {
             showingEndOverlay = true
         }
-        // Let the overlay animate for 2.5s, then dismiss it and show the alert
+        
+        // Dismiss the end overlay after 2.5s
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
             withAnimation(.easeOut(duration: 0.3)) {
                 showingEndOverlay = false
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                showingCompletionAlert = true
+            
+            if showQuicket {
+                // Show quicket animation after a brief pause
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    withAnimation(.easeIn(duration: 0.2)) {
+                        showingQuicketAnimation = true
+                    }
+                }
+                // Dismiss quicket animation (game transitions to results
+                // automatically via GameManager's delayed status change)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.7) {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        showingQuicketAnimation = false
+                    }
+                }
             }
         }
     }
@@ -380,6 +383,7 @@ struct CompletedGameResultsView: View {
     let otherPlayers: [PlayerGameState]
     let playerColorMap: [String: PlayerColor]
     let onDone: () -> Void
+    @State private var showingScoringInfo = false
     
     private var rankedPlayers: [PlayerGameState] {
         var all = otherPlayers
@@ -399,7 +403,18 @@ struct CompletedGameResultsView: View {
                 Text("Puzzle Complete")
                     .font(.title3)
                     .bold()
+                
+                Spacer()
+                
+                Button {
+                    showingScoringInfo = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                }
             }
+            .padding(.horizontal)
             
             // Game info
             if let game,
@@ -420,13 +435,20 @@ struct CompletedGameResultsView: View {
             
             // Player standings
             if !rankedPlayers.isEmpty {
+                let gameTimeElapsed: TimeInterval = {
+                    guard let g = game, let s = g.startedAt, let c = g.completedAt else { return 0 }
+                    return c.timeIntervalSince(s)
+                }()
+                
                 VStack(spacing: 0) {
                     ForEach(Array(rankedPlayers.enumerated()), id: \.element.id) { index, player in
                         CompletedGamePlayerRow(
                             player: player,
                             position: index + 1,
                             isCurrentUser: player.playerRecordName == currentPlayer?.playerRecordName,
-                            playerColor: playerColorMap[player.playerRecordName]?.color ?? .blue
+                            playerColor: playerColorMap[player.playerRecordName]?.color ?? .blue,
+                            difficulty: game?.difficulty ?? .medium,
+                            timeElapsed: gameTimeElapsed
                         )
                         
                         if index < rankedPlayers.count - 1 {
@@ -455,6 +477,9 @@ struct CompletedGameResultsView: View {
             .padding(.horizontal)
         }
         .padding(.vertical, 16)
+        .sheet(isPresented: $showingScoringInfo) {
+            ScoringInfoView(difficulty: game?.difficulty ?? .medium)
+        }
     }
 }
 
@@ -463,7 +488,10 @@ struct CompletedGamePlayerRow: View {
     let position: Int
     let isCurrentUser: Bool
     let playerColor: Color
+    let difficulty: DifficultyLevel
+    let timeElapsed: TimeInterval
     @State private var showingProfile = false
+    @State private var showingBreakdown = false
     
     var body: some View {
         HStack(spacing: 12) {
@@ -494,7 +522,7 @@ struct CompletedGamePlayerRow: View {
             
             Spacer()
             
-            // Score
+            // Score — tappable for breakdown
             Text("\(player.score)")
                 .font(.title3)
                 .bold()
@@ -505,6 +533,7 @@ struct CompletedGamePlayerRow: View {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(playerColor, lineWidth: 2)
                 )
+                .onTapGesture { showingBreakdown = true }
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
@@ -512,6 +541,176 @@ struct CompletedGamePlayerRow: View {
         .sheet(isPresented: $showingProfile) {
             PlayerProfileView(ownerRecordName: player.playerRecordName)
         }
+        .sheet(isPresented: $showingBreakdown) {
+            ScoreBreakdownView(
+                player: player,
+                position: position,
+                difficulty: difficulty,
+                timeElapsed: timeElapsed,
+                playerColor: playerColor
+            )
+        }
+    }
+}
+
+// MARK: - Score Breakdown
+
+struct ScoreBreakdownView: View {
+    let player: PlayerGameState
+    let position: Int
+    let difficulty: DifficultyLevel
+    let timeElapsed: TimeInterval
+    let playerColor: Color
+    @Environment(\.dismiss) private var dismiss
+    
+    private var pointsPerCorrect: Int {
+        ScoringSystem.pointsForCorrectGuess(difficulty: difficulty)
+    }
+    
+    private var correctTotal: Int {
+        player.correctGuesses * pointsPerCorrect
+    }
+    
+    private var incorrectTotal: Int {
+        player.incorrectGuesses * ScoringSystem.incorrectGuessPenalty
+    }
+    
+    private var speedBonus: Int {
+        ScoringSystem.speedBonus(cellsCompleted: player.cellsCompleted.count, timeElapsed: timeElapsed)
+    }
+    
+    private var positionBonus: Int {
+        switch position {
+        case 1: return ScoringSystem.firstPlaceBonus
+        case 2: return ScoringSystem.secondPlaceBonus
+        case 3: return ScoringSystem.thirdPlaceBonus
+        default: return 0
+        }
+    }
+    
+    private var positionLabel: String {
+        switch position {
+        case 1: return "1st place"
+        case 2: return "2nd place"
+        case 3: return "3rd place"
+        default: return "\(position)th place"
+        }
+    }
+    
+    private var speedLabel: String {
+        let avg = timeElapsed / Double(max(player.cellsCompleted.count, 1))
+        if avg < 10 {
+            return "Fast (<10s/cell)"
+        } else if avg < 20 {
+            return "Medium (<20s/cell)"
+        }
+        return "No speed bonus"
+    }
+    
+    private var computedTotal: Int {
+        max(0, correctTotal - incorrectTotal + speedBonus + positionBonus)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Player header
+                HStack {
+                    PositionBadge(position: position)
+                        .frame(width: 32)
+                    Text(player.playerUsername)
+                        .font(.headline)
+                        .foregroundColor(playerColor)
+                    Spacer()
+                }
+                .padding()
+                
+                Divider()
+                
+                // Breakdown rows
+                VStack(spacing: 0) {
+                    breakdownRow(
+                        label: "Correct guesses",
+                        detail: "\(player.correctGuesses) × \(pointsPerCorrect) pts (\(difficulty.rawValue.capitalized))",
+                        value: correctTotal,
+                        isPositive: true
+                    )
+                    
+                    Divider().padding(.leading, 16)
+                    
+                    breakdownRow(
+                        label: "Incorrect guesses",
+                        detail: "\(player.incorrectGuesses) × \(ScoringSystem.incorrectGuessPenalty) pts",
+                        value: incorrectTotal > 0 ? -incorrectTotal : 0,
+                        isPositive: false
+                    )
+                    
+                    Divider().padding(.leading, 16)
+                    
+                    breakdownRow(
+                        label: "Speed bonus",
+                        detail: speedLabel,
+                        value: speedBonus,
+                        isPositive: true
+                    )
+                    
+                    Divider().padding(.leading, 16)
+                    
+                    breakdownRow(
+                        label: "Position bonus",
+                        detail: positionLabel,
+                        value: positionBonus,
+                        isPositive: true
+                    )
+                }
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+                .padding()
+                
+                // Total
+                HStack {
+                    Text("Total")
+                        .font(.title3)
+                        .bold()
+                    Spacer()
+                    Text("\(computedTotal)")
+                        .font(.title2)
+                        .bold()
+                        .foregroundColor(playerColor)
+                }
+                .padding(.horizontal, 32)
+                .padding(.vertical, 8)
+                
+                Spacer()
+            }
+            .navigationTitle("Score Breakdown")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+    
+    private func breakdownRow(label: String, detail: String, value: Int, isPositive: Bool) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.subheadline)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            Text(value > 0 ? "+\(value)" : value < 0 ? "\(value)" : "0")
+                .font(.subheadline)
+                .bold()
+                .foregroundColor(value > 0 ? .green : value < 0 ? .red : .secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 }
 
@@ -665,7 +864,88 @@ struct GameEndOverlay: View {
             .opacity(opacity)
         }
         .onAppear {
+            // Play the appropriate sound effect
+            switch result {
+            case .won:
+                GameSoundManager.shared.playWinSound()
+            case .lost:
+                GameSoundManager.shared.playLoseSound()
+            }
+            
             // Pop in with overshoot
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.5, blendDuration: 0)) {
+                scale = 1.0
+                rotation = -3
+                opacity = 1.0
+            }
+            
+            // Subtle bounce settle
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6).delay(0.5)) {
+                rotation = 2
+            }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7).delay(0.8)) {
+                rotation = 0
+            }
+            
+            // Fade out
+            withAnimation(.easeIn(duration: 0.6).delay(1.8)) {
+                opacity = 0
+                scale = 1.15
+            }
+        }
+    }
+}
+
+// MARK: - Quicket Overlay
+
+struct QuicketFloatOverlay: View {
+    let amount: Int
+    
+    @State private var scale: CGFloat = 0.1
+    @State private var rotation: Double = -15
+    @State private var opacity: Double = 0
+    @State private var bounceOffset: CGFloat = 0
+    
+    private let goldColors: [Color] = [
+        Color(red: 1.0, green: 0.84, blue: 0.0),
+        Color(red: 0.85, green: 0.65, blue: 0.13),
+        Color(red: 1.0, green: 0.84, blue: 0.0)
+    ]
+    
+    var body: some View {
+        ZStack {
+            // Dim background
+            Color.black.opacity(opacity * 0.4)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                Text("QUICKETS +\(amount)")
+                    .font(.system(size: 48, weight: .black, design: .rounded))
+                    .italic()
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: goldColors,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .shadow(color: Color(red: 0.85, green: 0.65, blue: 0.13).opacity(0.8), radius: 0, x: 3, y: 3)
+                    .shadow(color: .black.opacity(0.5), radius: 8, x: 0, y: 4)
+                    .overlay {
+                        Text("QUICKETS +\(amount)")
+                            .font(.system(size: 48, weight: .black, design: .rounded))
+                            .italic()
+                            .foregroundStyle(.white.opacity(0.3))
+                            .blur(radius: 2)
+                    }
+                    .scaleEffect(scale)
+                    .rotationEffect(.degrees(rotation))
+                    .offset(y: bounceOffset)
+            }
+            .opacity(opacity)
+        }
+        .onAppear {
+            // Pop in with overshoot (same as GameEndOverlay)
             withAnimation(.spring(response: 0.5, dampingFraction: 0.5, blendDuration: 0)) {
                 scale = 1.0
                 rotation = -3

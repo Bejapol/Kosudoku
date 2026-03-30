@@ -107,6 +107,7 @@ class CloudKitService {
         record["totalScore"] = profile.totalScore
         record["gamesPlayed"] = profile.gamesPlayed
         record["gamesWon"] = profile.gamesWon
+        record["quickets"] = profile.quickets
         // Store the iCloud user record name so other users can identify the owner
         if let userRecordName = currentUserRecordName {
             record["ownerRecordName"] = userRecordName
@@ -147,6 +148,7 @@ class CloudKitService {
         profile.totalScore = (record["totalScore"] as? Int) ?? 0
         profile.gamesPlayed = (record["gamesPlayed"] as? Int) ?? 0
         profile.gamesWon = (record["gamesWon"] as? Int) ?? 0
+        profile.quickets = (record["quickets"] as? Int) ?? 5
         
         // Load avatar image if available
         if let avatarAsset = record["avatar"] as? CKAsset,
@@ -186,6 +188,7 @@ class CloudKitService {
         profile.totalScore = (record["totalScore"] as? Int) ?? 0
         profile.gamesPlayed = (record["gamesPlayed"] as? Int) ?? 0
         profile.gamesWon = (record["gamesWon"] as? Int) ?? 0
+        profile.quickets = (record["quickets"] as? Int) ?? 5
         
         if let avatarAsset = record["avatar"] as? CKAsset,
            let avatarURL = avatarAsset.fileURL,
@@ -289,6 +292,18 @@ class CloudKitService {
             record["completedAt"] = completedAt
         }
         
+        _ = try await publicDatabase.save(record)
+    }
+    
+    /// Update only the status (and completedAt) of a game session in CloudKit,
+    /// without touching the local GameSession object.
+    func updateGameSessionStatus(recordName: String, status: GameStatus, completedAt: Date?) async throws {
+        let recordID = CKRecord.ID(recordName: recordName)
+        let record = try await publicDatabase.record(for: recordID)
+        record["status"] = status.rawValue
+        if let completedAt {
+            record["completedAt"] = completedAt
+        }
         _ = try await publicDatabase.save(record)
     }
     

@@ -24,6 +24,10 @@
           "type": "INT64"
         },
         {
+          "name": "quickets",
+          "type": "INT64"
+        },
+        {
           "name": "avatar",
           "type": "ASSETID"
         },

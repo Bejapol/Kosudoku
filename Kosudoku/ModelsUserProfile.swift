@@ -18,6 +18,7 @@ final class UserProfile {
     var totalScore: Int
     var gamesPlayed: Int
     var gamesWon: Int
+    var quickets: Int = 5
     
     // CloudKit user identifier
     var cloudKitRecordName: String?
@@ -30,6 +31,7 @@ final class UserProfile {
         self.totalScore = 0
         self.gamesPlayed = 0
         self.gamesWon = 0
+        self.quickets = 5
         self.cloudKitRecordName = cloudKitRecordName
     }
 }

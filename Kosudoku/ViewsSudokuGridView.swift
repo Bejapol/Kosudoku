@@ -107,20 +107,39 @@ struct GridLines: View {
     
     var body: some View {
         ZStack {
-            // Thin lines
+            // Thin cell lines
             ForEach(0..<10) { i in
-                let offset = CGFloat(i) * cellSize
+                if i % 3 != 0 {
+                    let offset = CGFloat(i) * cellSize
+                    
+                    // Vertical lines
+                    Rectangle()
+                        .fill(Color(.systemGray4))
+                        .frame(width: 1)
+                        .offset(x: offset - cellSize * 4.5)
+                    
+                    // Horizontal lines
+                    Rectangle()
+                        .fill(Color(.systemGray4))
+                        .frame(height: 1)
+                        .offset(y: offset - cellSize * 4.5)
+                }
+            }
+            
+            // Thick 3x3 box borders
+            ForEach(0..<4) { i in
+                let offset = CGFloat(i * 3) * cellSize
                 
                 // Vertical lines
                 Rectangle()
-                    .fill(Color(.systemGray4))
-                    .frame(width: i % 3 == 0 ? 2 : 1)
+                    .fill(Color(.label))
+                    .frame(width: 3)
                     .offset(x: offset - cellSize * 4.5)
                 
                 // Horizontal lines
                 Rectangle()
-                    .fill(Color(.systemGray4))
-                    .frame(height: i % 3 == 0 ? 2 : 1)
+                    .fill(Color(.label))
+                    .frame(height: 3)
                     .offset(y: offset - cellSize * 4.5)
             }
         }

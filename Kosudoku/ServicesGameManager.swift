@@ -10,6 +10,10 @@ import SwiftData
 import SwiftUI
 import CloudKit
 
+extension Notification.Name {
+    static let gameEndResultSet = Notification.Name("gameEndResultSet")
+}
+
 /// Represents a visual effect to play on a cell after a move
 struct CellEffect: Equatable {
     enum Kind { case correct, incorrect }
@@ -583,74 +587,161 @@ class GameManager {
     }
     
     /// Complete the game
+    ///
+    /// The completing player is the single authority for final scores:
+    /// they calculate end-game bonuses (speed, first place) for ALL
+    /// players and save everything to CloudKit. Non-completing players
+    /// simply read their final score from CloudKit in `syncGameState()`.
     private func completeGame() async throws {
         guard let game = currentGame,
               let playerState = currentPlayerState else {
             throw GameError.noActiveGame
         }
         
-        // Guard against running twice (e.g., from both makeMove and syncGameState)
-        guard game.status != .completed else { return }
+        // Guard against running twice (e.g., from both makeMove and syncGameState).
+        // Check both status and gameEndResult since we defer setting .completed.
+        guard game.status != .completed, gameEndResult == nil else { return }
         
-        game.status = .completed
+        // Mark completed locally but defer setting game.status until after
+        // gameEndResult is set, so the view doesn't switch away before
+        // the end-game overlay can trigger.
         game.completedAt = Date()
-        isGameActive = false
         
-        // Add speed bonus to the accumulated per-move score
-        if let startTime = gameStartTime {
-            let timeElapsed = Date().timeIntervalSince(startTime)
+        let gameRecordName = game.cloudKitRecordName
+        let completionTime = Date()
+        let gameStart = gameStartTime ?? game.startedAt ?? completionTime
+        let timeElapsed = completionTime.timeIntervalSince(gameStart)
+        
+        // Gather all players (current + others) to determine final standings
+        var allPlayerStates: [(state: PlayerGameState, isLocal: Bool)] = []
+        allPlayerStates.append((playerState, true))
+        
+        // Fetch freshest other-player data from CloudKit for accurate cell counts
+        if let grn = gameRecordName {
+            if let records = try? await cloudKit.fetchPlayerStates(gameRecordName: grn) {
+                let currentRecordName = cloudKit.currentUserRecordName
+                var seenPlayers: Set<String> = []
+                let sorted = records.sorted {
+                    ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast)
+                }
+                for record in sorted {
+                    guard let prn = record["playerRecordName"] as? String else { continue }
+                    if prn == currentRecordName { continue }
+                    guard seenPlayers.insert(prn).inserted else { continue }
+                    
+                    let ps = PlayerGameState(
+                        playerRecordName: prn,
+                        playerUsername: (record["playerUsername"] as? String) ?? "Unknown",
+                        gameSession: game
+                    )
+                    ps.cloudKitRecordName = record.recordID.recordName
+                    ps.score = (record["score"] as? Int) ?? 0
+                    ps.correctGuesses = (record["correctGuesses"] as? Int) ?? 0
+                    ps.incorrectGuesses = (record["incorrectGuesses"] as? Int) ?? 0
+                    ps.cellsCompleted = (record["cellsCompleted"] as? [String]) ?? []
+                    ps.joinedAt = (record["joinedAt"] as? Date) ?? Date()
+                    ps.lastMoveAt = record["lastMoveAt"] as? Date
+                    allPlayerStates.append((ps, false))
+                }
+            }
+        }
+        
+        // First pass: apply speed bonus to get pre-position scores
+        for entry in allPlayerStates {
+            let ps = entry.state
             let speedPoints = ScoringSystem.speedBonus(
-                cellsCompleted: playerState.cellsCompleted.count,
+                cellsCompleted: ps.cellsCompleted.count,
                 timeElapsed: timeElapsed
             )
-            playerState.score += speedPoints
+            ps.score += speedPoints
         }
         
-        // Determine if this player won (completed the most cells)
-        let isWinner: Bool
-        if otherPlayers.isEmpty {
-            // Solo game — always a "win"
-            isWinner = true
-        } else {
-            let myCells = playerState.cellsCompleted.count
-            let maxOtherCells = otherPlayers.map(\.cellsCompleted.count).max() ?? 0
-            isWinner = myCells >= maxOtherCells
+        // Rank by score, then fewer incorrect guesses, then earliest last move
+        let ranked = allPlayerStates.shuffled().sorted {
+            if $0.state.score != $1.state.score {
+                return $0.state.score > $1.state.score
+            }
+            if $0.state.incorrectGuesses != $1.state.incorrectGuesses {
+                return $0.state.incorrectGuesses < $1.state.incorrectGuesses
+            }
+            // Earlier lastMoveAt wins (finished their moves sooner)
+            let t0 = $0.state.lastMoveAt ?? .distantFuture
+            let t1 = $1.state.lastMoveAt ?? .distantFuture
+            return t0 < t1
         }
         
-        // First place bonus only if actually won in multiplayer
-        if isWinner {
-            playerState.score += ScoringSystem.firstPlaceBonus
+        // Second pass: apply position bonus based on score ranking, then save
+        for (index, entry) in ranked.enumerated() {
+            let ps = entry.state
+            let position = index + 1
+            
+            switch position {
+            case 1: ps.score += ScoringSystem.firstPlaceBonus
+            case 2: ps.score += ScoringSystem.secondPlaceBonus
+            case 3: ps.score += ScoringSystem.thirdPlaceBonus
+            default: break
+            }
+            
+            ps.score = max(0, ps.score)
+            
+            // Save every player's final score to CloudKit
+            if let grn = gameRecordName {
+                try? await cloudKit.savePlayerState(ps, gameRecordName: grn)
+            }
         }
         
-        // Set end result for the overlay animation
-        gameEndResult = isWinner ? .won : .lost
+        // Determine if *this* player won (first in rankings)
+        let isWinner = ranked.first?.state.playerRecordName == playerState.playerRecordName
+        let result: GameEndResult = isWinner ? .won : .lost
         
-        // Ensure score doesn't go negative
-        playerState.score = max(0, playerState.score)
-        
-        // Update user profile stats
+        // Update user profile stats (use the already-updated playerState.score)
+        let isSoloGame = allPlayerStates.count <= 1
         if let profile = cloudKit.currentUserProfile {
             profile.totalScore += playerState.score
             profile.gamesPlayed += 1
             if isWinner {
                 profile.gamesWon += 1
+                // Award +1 quicket for winning a multiplayer game only
+                if !isSoloGame {
+                    profile.quickets += 1
+                }
             }
         }
         
-        // Save locally first so stats persist regardless of CloudKit
+        // Save locally (but do NOT set game.status = .completed yet —
+        // that would switch the view to CompletedGameResultsView before
+        // the end-game overlay animations can play).
         try modelContext.save()
         
-        // Sync to CloudKit (don't let failures lose local data)
+        // Sync profile to CloudKit
         if let profile = cloudKit.currentUserProfile {
             try? await cloudKit.saveUserProfile(profile)
         }
-        if let gameRecordName = game.cloudKitRecordName {
-            try? await cloudKit.savePlayerState(playerState, gameRecordName: gameRecordName)
-        }
-        try? await cloudKit.updateGameSession(game)
         
-        // Stop sync timer
+        // Stop sync timer so it doesn't race with the animation sequence
         stopSyncTimer()
+        
+        // Set gameEndResult — this fires onChange(of: gameEndResult) in
+        // GameView, triggering the overlay + quicket animation sequence.
+        gameEndResult = result
+        NotificationCenter.default.post(name: .gameEndResultSet, object: nil)
+        
+        // Push completed status to CloudKit directly on the record,
+        // WITHOUT changing the local game.status (which would switch
+        // the view to CompletedGameResultsView too early).
+        if let grn = gameRecordName {
+            Task {
+                try? await self.cloudKit.updateGameSessionStatus(recordName: grn, status: .completed, completedAt: game.completedAt)
+            }
+        }
+        
+        // After the animation sequence completes (~6s), mark the game
+        // as completed locally so the view transitions to results.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { [weak self] in
+            guard let self else { return }
+            self.currentGame?.status = .completed
+            self.isGameActive = false
+        }
     }
     
     // MARK: - Player Colors
@@ -806,63 +897,95 @@ class GameManager {
                let status = GameStatus(rawValue: statusRaw),
                status == .completed,
                game.status != .completed {
-                game.status = .completed
                 game.completedAt = gameRecord["completedAt"] as? Date
                 
-                // Determine win/loss by comparing cells completed
-                // (updatedOtherPlayers was just fetched from CloudKit above)
-                let isWinner: Bool
-                if updatedOtherPlayers.isEmpty {
-                    isWinner = true
-                } else {
-                    let myCells = currentPlayerState?.cellsCompleted.count ?? 0
-                    let maxOtherCells = updatedOtherPlayers.map(\.cellsCompleted.count).max() ?? 0
-                    isWinner = myCells > maxOtherCells
-                }
-                
-                if let playerState = currentPlayerState,
-                   let profile = cloudKit.currentUserProfile {
-                    // Add speed bonus to accumulated score
-                    if let startTime = gameStartTime {
-                        let timeElapsed = Date().timeIntervalSince(startTime)
-                        let speedPoints = ScoringSystem.speedBonus(
-                            cellsCompleted: playerState.cellsCompleted.count,
-                            timeElapsed: timeElapsed
-                        )
-                        playerState.score += speedPoints
-                    }
-                    
-                    // First place bonus if this player won
-                    if isWinner {
-                        playerState.score += ScoringSystem.firstPlaceBonus
-                    }
-                    
-                    playerState.score = max(0, playerState.score)
-                    
-                    profile.totalScore += playerState.score
-                    profile.gamesPlayed += 1
-                    if isWinner {
-                        profile.gamesWon += 1
-                    }
-                    
-                    try? await cloudKit.saveUserProfile(profile)
-                    if let gameRecordName = game.cloudKitRecordName {
-                        try? await cloudKit.savePlayerState(playerState, gameRecordName: gameRecordName)
-                    }
-                }
-                
-                try? modelContext.save()
-                await MainActor.run {
-                    self.gameEndResult = isWinner ? .won : .lost
-                    self.isGameActive = false
-                }
+                // Stop sync timer first to prevent further syncs
                 stopSyncTimer()
+                
+                // The completing player already calculated final scores for
+                // everyone and saved them to CloudKit. Do a fresh fetch of
+                // player states to get the authoritative bonus-applied scores
+                // (the batch we already have may be stale due to CloudKit
+                // eventual consistency).
+                if let playerState = currentPlayerState {
+                    let freshRecords = (try? await cloudKit.fetchPlayerStates(gameRecordName: gameRecordName)) ?? []
+                    
+                    // Deduplicate — keep only the most recently modified record per player
+                    let freshSorted = freshRecords.sorted {
+                        ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast)
+                    }
+                    var freshSeen: Set<String> = []
+                    var freshOtherPlayers: [PlayerGameState] = []
+                    
+                    for record in freshSorted {
+                        guard let prn = record["playerRecordName"] as? String else { continue }
+                        guard freshSeen.insert(prn).inserted else { continue }
+                        
+                        if prn == currentPlayerRecordName {
+                            // Read our authoritative score
+                            let cloudScore = (record["score"] as? Int) ?? playerState.score
+                            playerState.score = cloudScore
+                        } else {
+                            let ps = PlayerGameState(
+                                playerRecordName: prn,
+                                playerUsername: (record["playerUsername"] as? String) ?? "Unknown",
+                                gameSession: game
+                            )
+                            ps.score = (record["score"] as? Int) ?? 0
+                            ps.correctGuesses = (record["correctGuesses"] as? Int) ?? 0
+                            ps.incorrectGuesses = (record["incorrectGuesses"] as? Int) ?? 0
+                            ps.cellsCompleted = (record["cellsCompleted"] as? [String]) ?? []
+                            ps.joinedAt = (record["joinedAt"] as? Date) ?? Date()
+                            freshOtherPlayers.append(ps)
+                        }
+                    }
+                    
+                    // Determine win/loss from final scores
+                    let myScore = playerState.score
+                    let maxOtherScore = freshOtherPlayers.map(\.score).max() ?? 0
+                    let isWinner = freshOtherPlayers.isEmpty || myScore > maxOtherScore
+                    
+                    let isSoloGame = freshOtherPlayers.isEmpty
+                    if let profile = cloudKit.currentUserProfile {
+                        profile.totalScore += playerState.score
+                        profile.gamesPlayed += 1
+                        if isWinner {
+                            profile.gamesWon += 1
+                            // Award +1 quicket for winning a multiplayer game only
+                            if !isSoloGame {
+                                profile.quickets += 1
+                            }
+                        }
+                        try? await cloudKit.saveUserProfile(profile)
+                    }
+                    
+                    try? modelContext.save()
+                    await MainActor.run {
+                        self.otherPlayers = freshOtherPlayers
+                        self.recomputeColorMap()
+                        // Set gameEndResult to trigger the animation sequence.
+                        // Do NOT set game.status = .completed yet — that would
+                        // switch the view to CompletedGameResultsView before
+                        // the overlay animations can play.
+                        self.gameEndResult = isWinner ? .won : .lost
+                        NotificationCenter.default.post(name: .gameEndResultSet, object: nil)
+                    }
+                    
+                    // Delay setting completed status and deactivating game
+                    // until the animation sequence finishes (~6s).
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { [weak self] in
+                        guard let self else { return }
+                        self.currentGame?.status = .completed
+                        self.isGameActive = false
+                    }
+                } else {
+                    await MainActor.run {
+                        game.status = .completed
+                        self.isGameActive = false
+                    }
+                }
+                
                 return
-            }
-            
-            // Check if board is complete locally
-            if let board = currentBoard, SudokuGenerator.isBoardComplete(board) {
-                try await completeGame()
             }
             
         } catch {
