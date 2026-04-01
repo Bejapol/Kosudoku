@@ -32,6 +32,9 @@ final class PlayerGameState {
     var selectedRow: Int?
     var selectedCol: Int?
     
+    /// Custom color purchased from the store (nil = use auto-assigned)
+    var customColorRawValue: Int?
+    
     // CloudKit record name for updating the existing record
     var cloudKitRecordName: String?
     

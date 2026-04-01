@@ -108,6 +108,7 @@ class CloudKitService {
         record["gamesPlayed"] = profile.gamesPlayed
         record["gamesWon"] = profile.gamesWon
         record["quickets"] = profile.quickets
+        record["customColorRawValue"] = profile.customColorRawValue as CKRecordValue?
         // Store the iCloud user record name so other users can identify the owner
         if let userRecordName = currentUserRecordName {
             record["ownerRecordName"] = userRecordName
@@ -149,6 +150,7 @@ class CloudKitService {
         profile.gamesPlayed = (record["gamesPlayed"] as? Int) ?? 0
         profile.gamesWon = (record["gamesWon"] as? Int) ?? 0
         profile.quickets = (record["quickets"] as? Int) ?? 5
+        profile.customColorRawValue = record["customColorRawValue"] as? Int
         
         // Load avatar image if available
         if let avatarAsset = record["avatar"] as? CKAsset,
@@ -189,6 +191,7 @@ class CloudKitService {
         profile.gamesPlayed = (record["gamesPlayed"] as? Int) ?? 0
         profile.gamesWon = (record["gamesWon"] as? Int) ?? 0
         profile.quickets = (record["quickets"] as? Int) ?? 5
+        profile.customColorRawValue = record["customColorRawValue"] as? Int
         
         if let avatarAsset = record["avatar"] as? CKAsset,
            let avatarURL = avatarAsset.fileURL,
@@ -290,6 +293,9 @@ class CloudKitService {
         }
         if let completedAt = session.completedAt {
             record["completedAt"] = completedAt
+        }
+        if let countdownStartedAt = session.countdownStartedAt {
+            record["countdownStartedAt"] = countdownStartedAt
         }
         
         _ = try await publicDatabase.save(record)
@@ -442,6 +448,7 @@ class CloudKitService {
         }
         record["selectedRow"] = state.selectedRow as CKRecordValue?
         record["selectedCol"] = state.selectedCol as CKRecordValue?
+        record["customColorRawValue"] = state.customColorRawValue as CKRecordValue?
         
         let savedRecord = try await publicDatabase.save(record)
         state.cloudKitRecordName = savedRecord.recordID.recordName

@@ -54,11 +54,17 @@ struct ContentView: View {
                     }
                     .tag(2)
                 
+                StoreView()
+                    .tabItem {
+                        Label("Store", systemImage: "storefront.fill")
+                    }
+                    .tag(3)
+                
                 ProfileView()
                     .tabItem {
                         Label("Profile", systemImage: "person.fill")
                     }
-                    .tag(3)
+                    .tag(4)
             }
             
             // In-app notification banner

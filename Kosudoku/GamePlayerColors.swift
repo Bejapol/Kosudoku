@@ -39,7 +39,13 @@ struct PlayerColorAssigner {
         let palette = PlayerColor.allCases
         var result: [String: PlayerColor] = [:]
         for (index, player) in sorted.enumerated() {
-            result[player.playerRecordName] = palette[index % palette.count]
+            // Use custom color if the player purchased one, otherwise auto-assign
+            if let customRaw = player.customColorRawValue,
+               let custom = PlayerColor(rawValue: customRaw) {
+                result[player.playerRecordName] = custom
+            } else {
+                result[player.playerRecordName] = palette[index % palette.count]
+            }
         }
         return result
     }

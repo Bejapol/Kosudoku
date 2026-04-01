@@ -47,6 +47,9 @@ final class GameSession {
     // Players who declined the invitation
     var declinedPlayers: [String] = []
     
+    // Countdown sync timestamp — set when all players accept (or host force-starts)
+    var countdownStartedAt: Date?
+    
     init(hostRecordName: String, difficulty: DifficultyLevel, puzzleData: String, solutionData: String, invitedPlayers: [String] = []) {
         self.id = UUID()
         self.createdAt = Date()

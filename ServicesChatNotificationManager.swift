@@ -663,6 +663,7 @@ class ChatNotificationManager {
             bannerQueue.append(banner)
         } else {
             currentBanner = banner
+            GameSoundManager.shared.playNotificationSound()
             scheduleAutoDismiss()
         }
     }

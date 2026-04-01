@@ -14,6 +14,7 @@ struct ProfileView: View {
     @Query private var profiles: [UserProfile]
     @State private var showingEditProfile = false
     @State private var showingSignOutConfirmation = false
+    @State private var showingColorPicker = false
     
     var currentProfile: UserProfile? {
         // First check if CloudKit service has a current profile set
@@ -96,6 +97,32 @@ struct ProfileView: View {
                         }
                     }
                     
+                    Section("My Goodies") {
+                        if profile.hasCustomColor,
+                           let colorRaw = profile.customColorRawValue,
+                           let color = PlayerColor(rawValue: colorRaw) {
+                            HStack {
+                                Circle()
+                                    .fill(color.color)
+                                    .frame(width: 24, height: 24)
+                                Text("Custom Game Color")
+                                Spacer()
+                                Button("Change") {
+                                    showingColorPicker = true
+                                }
+                                .font(.subheadline)
+                            }
+                        } else {
+                            HStack {
+                                Image(systemName: "storefront.fill")
+                                    .foregroundColor(.secondary)
+                                Text("Visit the Store to customize your game experience")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    
                     Section("Account") {
                         Button("Edit Profile") {
                             showingEditProfile = true
@@ -117,6 +144,11 @@ struct ProfileView: View {
             .sheet(isPresented: $showingEditProfile) {
                 if let profile = currentProfile {
                     EditProfileView(profile: profile)
+                }
+            }
+            .sheet(isPresented: $showingColorPicker) {
+                if let profile = currentProfile {
+                    ColorPickerSheet(profile: profile)
                 }
             }
             .confirmationDialog(
@@ -164,6 +196,95 @@ struct ProfileView: View {
         cloudKitService.isAuthenticated = false
         cloudKitService.currentUserProfile = nil
         cloudKitService.currentUserRecordName = nil
+    }
+}
+
+/// Sheet for changing the custom game color from the profile
+private struct ColorPickerSheet: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    @State private var cloudKitService = CloudKitService.shared
+    let profile: UserProfile
+    @State private var selectedColor: PlayerColor?
+    @State private var isSaving = false
+    
+    private var currentColor: PlayerColor? {
+        guard let raw = profile.customColorRawValue else { return nil }
+        return PlayerColor(rawValue: raw)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Text("Choose your game color")
+                    .font(.headline)
+                
+                HStack(spacing: 16) {
+                    ForEach(PlayerColor.allCases, id: \.rawValue) { color in
+                        Button {
+                            selectedColor = color
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(color.color)
+                                    .frame(width: 48, height: 48)
+                                
+                                if currentColor == color && selectedColor == nil {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 20, weight: .bold))
+                                        .foregroundColor(.white)
+                                } else if selectedColor == color {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 20, weight: .bold))
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .overlay(
+                                Circle()
+                                    .stroke(selectedColor == color ? Color.primary : Color.clear, lineWidth: 3)
+                                    .frame(width: 54, height: 54)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                
+                if let selected = selectedColor, selected != currentColor {
+                    Button {
+                        saveColor(selected)
+                    } label: {
+                        Text("Save")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isSaving)
+                }
+                
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Change Color")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+    
+    private func saveColor(_ color: PlayerColor) {
+        isSaving = true
+        profile.customColorRawValue = color.rawValue
+        try? modelContext.save()
+        
+        Task {
+            try? await cloudKitService.saveUserProfile(profile)
+            await MainActor.run {
+                isSaving = false
+                dismiss()
+            }
+        }
     }
 }
 

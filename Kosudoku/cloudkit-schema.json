@@ -38,6 +38,10 @@
         {
           "name": "ownerRecordName",
           "type": "STRING"
+        },
+        {
+          "name": "customColorRawValue",
+          "type": "INT64"
         }
       ],
       "indexes": [
@@ -112,6 +116,10 @@
         {
           "name": "declinedPlayers",
           "type": "STRING_LIST"
+        },
+        {
+          "name": "countdownStartedAt",
+          "type": "TIMESTAMP"
         }
       ],
       "indexes": [
@@ -195,6 +203,10 @@
         },
         {
           "name": "selectedCol",
+          "type": "INT64"
+        },
+        {
+          "name": "customColorRawValue",
           "type": "INT64"
         }
       ],

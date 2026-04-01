@@ -10,6 +10,7 @@
 		AC9B3A042F726A28008E2C44 /* ServicesChatNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A032F726A28008E2C44 /* ServicesChatNotificationManager.swift */; };
 		AC9B3A062F726AE1008E2C44 /* ViewsChatBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A052F726AE1008E2C44 /* ViewsChatBannerView.swift */; };
 		AC9B3A0A2F73C718008E2C44 /* ViewsGameLobbyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A092F73C718008E2C44 /* ViewsGameLobbyView.swift */; };
+		AC9B3A0C2F7B828B008E2C44 /* ViewsStoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A0B2F7B828B008E2C44 /* ViewsStoreView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,6 +37,7 @@
 		AC9B3A032F726A28008E2C44 /* ServicesChatNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicesChatNotificationManager.swift; sourceTree = "<group>"; };
 		AC9B3A052F726AE1008E2C44 /* ViewsChatBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewsChatBannerView.swift; sourceTree = "<group>"; };
 		AC9B3A092F73C718008E2C44 /* ViewsGameLobbyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewsGameLobbyView.swift; sourceTree = "<group>"; };
+		AC9B3A0B2F7B828B008E2C44 /* ViewsStoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewsStoreView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -104,6 +106,7 @@
 				AC9B3A032F726A28008E2C44 /* ServicesChatNotificationManager.swift */,
 				AC9B3A052F726AE1008E2C44 /* ViewsChatBannerView.swift */,
 				AC9B3A092F73C718008E2C44 /* ViewsGameLobbyView.swift */,
+				AC9B3A0B2F7B828B008E2C44 /* ViewsStoreView.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -263,6 +266,7 @@
 			files = (
 				AC9B3A042F726A28008E2C44 /* ServicesChatNotificationManager.swift in Sources */,
 				AC9B3A062F726AE1008E2C44 /* ViewsChatBannerView.swift in Sources */,
+				AC9B3A0C2F7B828B008E2C44 /* ViewsStoreView.swift in Sources */,
 				AC9B3A0A2F73C718008E2C44 /* ViewsGameLobbyView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

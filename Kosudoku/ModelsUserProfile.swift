@@ -20,6 +20,11 @@ final class UserProfile {
     var gamesWon: Int
     var quickets: Int = 5
     
+    /// Raw value of the purchased custom PlayerColor (nil = not purchased)
+    var customColorRawValue: Int?
+    
+    var hasCustomColor: Bool { customColorRawValue != nil }
+    
     // CloudKit user identifier
     var cloudKitRecordName: String?
     

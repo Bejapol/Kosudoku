@@ -55,6 +55,12 @@ final class GameSoundManager {
         playBuffer(buffer)
     }
     
+    /// Play a short click sound for notifications
+    func playNotificationSound() {
+        guard isSetUp, let buffer = generateNotificationClickBuffer() else { return }
+        playBuffer(buffer)
+    }
+    
     private func playBuffer(_ buffer: AVAudioPCMBuffer) {
         guard let engine, let playerNode else { return }
         do {
@@ -195,6 +201,28 @@ final class GameSoundManager {
             let breath = Float.random(in: -1...1) * 0.1
             
             data[i] = (voice + breath) * burstEnv * overallEnv * 0.4
+        }
+        
+        return buffer
+    }
+    
+    /// Generates a short, soft click/pop for notification banners
+    private func generateNotificationClickBuffer() -> AVAudioPCMBuffer? {
+        let duration: Double = 0.08
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let data = buffer.floatChannelData?[0] else { return nil }
+        buffer.frameLength = frameCount
+        
+        // A quick "pop" — short sine burst at ~880 Hz with rapid decay
+        let freq: Double = 880
+        for i in 0..<Int(frameCount) {
+            let t = Double(i) / sampleRate
+            let progress = Double(i) / Double(frameCount)
+            // Fast exponential decay
+            let envelope = Float(exp(-progress * 8.0) * 0.35)
+            data[i] = Float(sin(2.0 * .pi * freq * t)) * envelope
         }
         
         return buffer

@@ -45,11 +45,6 @@ struct ScoringSystem {
         return 0
     }
     
-    // Completion bonus (bonus for finishing the entire puzzle first)
-    static let firstPlaceBonus = 100
-    static let secondPlaceBonus = 50
-    static let thirdPlaceBonus = 25
-    
     /// Calculate points for a correct guess
     static func pointsForCorrectGuess(difficulty: DifficultyLevel) -> Int {
         let basePoints = Double(correctGuessPoints)
@@ -68,8 +63,7 @@ struct ScoringSystem {
         incorrectGuesses: Int,
         cellsCompleted: Int,
         difficulty: DifficultyLevel,
-        timeElapsed: TimeInterval,
-        finishPosition: Int?
+        timeElapsed: TimeInterval
     ) -> Int {
         // Base score from correct guesses
         let correctPoints = correctGuesses * pointsForCorrectGuess(difficulty: difficulty)
@@ -80,21 +74,6 @@ struct ScoringSystem {
         // Speed bonus
         let speedPoints = speedBonus(cellsCompleted: cellsCompleted, timeElapsed: timeElapsed)
         
-        // Position bonus
-        var positionBonus = 0
-        if let position = finishPosition {
-            switch position {
-            case 1:
-                positionBonus = firstPlaceBonus
-            case 2:
-                positionBonus = secondPlaceBonus
-            case 3:
-                positionBonus = thirdPlaceBonus
-            default:
-                break
-            }
-        }
-        
-        return max(0, correctPoints - incorrectPoints + speedPoints + positionBonus)
+        return max(0, correctPoints - incorrectPoints + speedPoints)
     }
 }

@@ -126,7 +126,7 @@ struct GameView: View {
                     otherPlayers: gameManager.otherPlayers,
                     playerColorMap: gameManager.playerColorMap,
                     onDone: {
-                        gameManager.leaveGame()
+                        gameManager.returnToLobby()
                         dismiss()
                     }
                 )
@@ -251,7 +251,7 @@ struct GameView: View {
             ToolbarItem(placement: .navigationBarLeading) {
                 if isViewingCompleted {
                     Button {
-                        gameManager.leaveGame()
+                        gameManager.returnToLobby()
                         dismiss()
                     } label: {
                         Text("Done")
@@ -390,7 +390,15 @@ struct CompletedGameResultsView: View {
         if let current = currentPlayer {
             all.append(current)
         }
-        return all.sorted { $0.score > $1.score }
+        return all.sorted {
+            if $0.score != $1.score { return $0.score > $1.score }
+            if $0.incorrectGuesses != $1.incorrectGuesses {
+                return $0.incorrectGuesses < $1.incorrectGuesses
+            }
+            let t0 = $0.lastMoveAt ?? .distantFuture
+            let t1 = $1.lastMoveAt ?? .distantFuture
+            return t0 < t1
+        }
     }
     
     var body: some View {
@@ -441,7 +449,7 @@ struct CompletedGameResultsView: View {
                 }()
                 
                 VStack(spacing: 0) {
-                    ForEach(Array(rankedPlayers.enumerated()), id: \.element.id) { index, player in
+                    ForEach(Array(rankedPlayers.enumerated()), id: \.element.playerRecordName) { index, player in
                         CompletedGamePlayerRow(
                             player: player,
                             position: index + 1,
@@ -579,24 +587,6 @@ struct ScoreBreakdownView: View {
         ScoringSystem.speedBonus(cellsCompleted: player.cellsCompleted.count, timeElapsed: timeElapsed)
     }
     
-    private var positionBonus: Int {
-        switch position {
-        case 1: return ScoringSystem.firstPlaceBonus
-        case 2: return ScoringSystem.secondPlaceBonus
-        case 3: return ScoringSystem.thirdPlaceBonus
-        default: return 0
-        }
-    }
-    
-    private var positionLabel: String {
-        switch position {
-        case 1: return "1st place"
-        case 2: return "2nd place"
-        case 3: return "3rd place"
-        default: return "\(position)th place"
-        }
-    }
-    
     private var speedLabel: String {
         let avg = timeElapsed / Double(max(player.cellsCompleted.count, 1))
         if avg < 10 {
@@ -608,7 +598,7 @@ struct ScoreBreakdownView: View {
     }
     
     private var computedTotal: Int {
-        max(0, correctTotal - incorrectTotal + speedBonus + positionBonus)
+        max(0, correctTotal - incorrectTotal + speedBonus)
     }
     
     var body: some View {
@@ -651,15 +641,6 @@ struct ScoreBreakdownView: View {
                         label: "Speed bonus",
                         detail: speedLabel,
                         value: speedBonus,
-                        isPositive: true
-                    )
-                    
-                    Divider().padding(.leading, 16)
-                    
-                    breakdownRow(
-                        label: "Position bonus",
-                        detail: positionLabel,
-                        value: positionBonus,
                         isPositive: true
                     )
                 }

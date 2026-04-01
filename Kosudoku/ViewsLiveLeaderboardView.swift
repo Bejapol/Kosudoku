@@ -63,7 +63,7 @@ struct CompactLeaderboardView: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            ForEach(Array(players.enumerated()), id: \.element.id) { index, player in
+            ForEach(Array(players.enumerated()), id: \.element.playerRecordName) { index, player in
                 let playerColor = playerColorMap[player.playerRecordName]?.color ?? .blue
                 let isCurrentUser = player.playerRecordName == currentPlayerRecordName
                 
@@ -129,7 +129,7 @@ struct ExpandedLeaderboardView: View {
             // Player list
             ScrollView {
                 VStack(spacing: 0) {
-                    ForEach(Array(players.enumerated()), id: \.element.id) { index, player in
+                    ForEach(Array(players.enumerated()), id: \.element.playerRecordName) { index, player in
                         LeaderboardRowView(
                             player: player,
                             position: index + 1,
@@ -377,29 +377,17 @@ struct ScoringInfoView: View {
                     }
                 }
                 
-                Section("Position Bonus") {
-                    HStack {
-                        Label("1st place", systemImage: "trophy.fill")
+                Section("Winner Determination") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("1. Highest score", systemImage: "trophy.fill")
                             .foregroundColor(.yellow)
-                        Spacer()
-                        Text("+\(ScoringSystem.firstPlaceBonus) pts")
-                            .bold()
+                        Label("2. Fewest incorrect guesses", systemImage: "xmark.circle")
+                            .foregroundColor(.secondary)
+                        Label("3. Earliest last move", systemImage: "clock")
+                            .foregroundColor(.secondary)
                     }
-                    HStack {
-                        Label("2nd place", systemImage: "medal.fill")
-                            .foregroundColor(.gray)
-                        Spacer()
-                        Text("+\(ScoringSystem.secondPlaceBonus) pts")
-                            .bold()
-                    }
-                    HStack {
-                        Label("3rd place", systemImage: "medal.fill")
-                            .foregroundColor(.orange)
-                        Spacer()
-                        Text("+\(ScoringSystem.thirdPlaceBonus) pts")
-                            .bold()
-                    }
-                    Text("Position is determined by score before this bonus is applied. Ties are broken by: 1) fewer incorrect guesses, then 2) earliest last move.")
+                    .font(.subheadline)
+                    Text("If all tiebreakers are equal, both players win.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -419,7 +407,7 @@ struct ScoringInfoView: View {
                 }
                 
                 Section {
-                    Text("Your final score is the sum of all correct-guess points, minus incorrect-guess penalties, plus any speed and position bonuses. The minimum score is 0.")
+                    Text("Your final score is the sum of all correct-guess points, minus incorrect-guess penalties, plus any speed bonus. The minimum score is 0.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
