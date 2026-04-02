@@ -11,6 +11,8 @@
 		AC9B3A062F726AE1008E2C44 /* ViewsChatBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A052F726AE1008E2C44 /* ViewsChatBannerView.swift */; };
 		AC9B3A0A2F73C718008E2C44 /* ViewsGameLobbyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A092F73C718008E2C44 /* ViewsGameLobbyView.swift */; };
 		AC9B3A0C2F7B828B008E2C44 /* ViewsStoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A0B2F7B828B008E2C44 /* ViewsStoreView.swift */; };
+		AC9B3A112F7CF23F008E2C44 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AC9B3A102F7CF23E008E2C44 /* StoreKit.framework */; };
+		AC9B3A132F7CF324008E2C44 /* Products.storekit in Resources */ = {isa = PBXBuildFile; fileRef = AC9B3A122F7CF324008E2C44 /* Products.storekit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -38,6 +40,9 @@
 		AC9B3A052F726AE1008E2C44 /* ViewsChatBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewsChatBannerView.swift; sourceTree = "<group>"; };
 		AC9B3A092F73C718008E2C44 /* ViewsGameLobbyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewsGameLobbyView.swift; sourceTree = "<group>"; };
 		AC9B3A0B2F7B828B008E2C44 /* ViewsStoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewsStoreView.swift; sourceTree = "<group>"; };
+		AC9B3A102F7CF23E008E2C44 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
+		AC9B3A122F7CF324008E2C44 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
+		AC9B3A142F7D7D9D008E2C44 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -76,6 +81,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AC9B3A112F7CF23F008E2C44 /* StoreKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -99,6 +105,8 @@
 		AC1DE06E2F5D48DB0016C7EA = {
 			isa = PBXGroup;
 			children = (
+				AC9B3A122F7CF324008E2C44 /* Products.storekit */,
+				AC9B3A142F7D7D9D008E2C44 /* Products.storekit */,
 				AC1DE0792F5D48DB0016C7EA /* Kosudoku */,
 				AC1DE08B2F5D48DD0016C7EA /* KosudokuTests */,
 				AC1DE0952F5D48DD0016C7EA /* KosudokuUITests */,
@@ -107,6 +115,7 @@
 				AC9B3A052F726AE1008E2C44 /* ViewsChatBannerView.swift */,
 				AC9B3A092F73C718008E2C44 /* ViewsGameLobbyView.swift */,
 				AC9B3A0B2F7B828B008E2C44 /* ViewsStoreView.swift */,
+				AC9B3A0F2F7CF23E008E2C44 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -118,6 +127,14 @@
 				AC1DE0922F5D48DD0016C7EA /* KosudokuUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		AC9B3A0F2F7CF23E008E2C44 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				AC9B3A102F7CF23E008E2C44 /* StoreKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -240,6 +257,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AC9B3A132F7CF324008E2C44 /* Products.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

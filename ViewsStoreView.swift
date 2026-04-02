@@ -7,10 +7,13 @@
 
 import SwiftUI
 import SwiftData
+import StoreKit
 
 struct StoreView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var cloudKitService = CloudKitService.shared
+    @State private var storeManager = StoreManager.shared
+    @State private var showingPurchaseSuccess = false
     @State private var selectedColor: PlayerColor?
     @State private var showingConfirmation = false
     @State private var showingSuccess = false
@@ -50,6 +53,73 @@ struct StoreView: View {
                         Spacer()
                     }
                     .padding(.vertical, 4)
+                }
+                
+                // Buy Quickets
+                Section {
+                    if let product = storeManager.quicketsProduct {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(.green)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(product.displayName)
+                                    .font(.headline)
+                                Text(product.description)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Button {
+                                Task {
+                                    let success = await storeManager.purchaseQuickets()
+                                    if success {
+                                        try? modelContext.save()
+                                        showingPurchaseSuccess = true
+                                    }
+                                }
+                            } label: {
+                                Text(product.displayPrice)
+                                    .font(.subheadline)
+                                    .bold()
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color.accentColor)
+                                    .foregroundColor(.white)
+                                    .clipShape(Capsule())
+                            }
+                            .disabled(storeManager.isPurchasing)
+                        }
+                        .padding(.vertical, 4)
+                    } else if storeManager.hasAttemptedLoad {
+                        // Loading finished but product wasn't found
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Unable to load store products.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Button("Retry") {
+                                Task {
+                                    await storeManager.loadProducts()
+                                }
+                            }
+                            .font(.subheadline)
+                        }
+                    } else {
+                        HStack {
+                            ProgressView()
+                            Text("Loading store...")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    if let error = storeManager.errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                } header: {
+                    Text("Buy Quickets")
                 }
                 
                 // Custom Game Color product
@@ -145,6 +215,9 @@ struct StoreView: View {
                     Label("Win a multiplayer game to earn 1 quicket", systemImage: "trophy.fill")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
+                    Label("Purchase quickets in the Buy Quickets section above", systemImage: "cart.fill")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 } header: {
                     Text("Earning Quickets")
                 }
@@ -173,6 +246,11 @@ struct StoreView: View {
                 Button("OK") { }
             } message: {
                 Text(errorMessage ?? "Something went wrong")
+            }
+            .alert("Quickets Added!", isPresented: $showingPurchaseSuccess) {
+                Button("OK") { }
+            } message: {
+                Text("5 quickets have been added to your balance.")
             }
         }
     }

@@ -116,6 +116,7 @@ struct KosudokuApp: App {
     }()
     
     @State private var cloudKitService = CloudKitService.shared
+    @State private var storeManager = StoreManager.shared
 
     var body: some Scene {
         WindowGroup {
@@ -127,6 +128,9 @@ struct KosudokuApp: App {
                     UIApplication.shared.registerForRemoteNotifications()
                     // Request permission for visible push notifications
                     await ChatNotificationManager.shared.requestNotificationPermission()
+                    // Start StoreKit transaction listener and load products
+                    storeManager.startTransactionListener()
+                    await storeManager.loadProducts()
                 }
         }
     }

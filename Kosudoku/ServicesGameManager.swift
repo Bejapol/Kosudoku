@@ -661,6 +661,10 @@ class GameManager {
         // Check both status and gameEndResult since we defer setting .completed.
         guard game.status != .completed, gameEndResult == nil else { return }
         
+        // Stop sync timer IMMEDIATELY to prevent syncGameState from racing
+        // with score mutations (e.g., adding speed bonus a second time).
+        stopSyncTimer()
+        
         // Mark completed locally but defer setting game.status until after
         // gameEndResult is set, so the view doesn't switch away before
         // the end-game overlay can trigger.
@@ -771,9 +775,6 @@ class GameManager {
         if let profile = cloudKit.currentUserProfile {
             try? await cloudKit.saveUserProfile(profile)
         }
-        
-        // Stop sync timer so it doesn't race with the animation sequence
-        stopSyncTimer()
         
         // Set gameEndResult — this fires onChange(of: gameEndResult) in
         // GameView, triggering the overlay + quicket animation sequence.
@@ -998,7 +999,32 @@ class GameManager {
                 
                 // Stop sync timer first to prevent further syncs
                 stopSyncTimer()
-                
+
+                // Re-fetch the game record to get the final puzzleData
+                // (the one we already fetched may be stale and missing
+                // the winning player's last move).
+                if let finalGameRecord = try? await cloudKit.fetchGameSession(recordName: gameRecordName),
+                   let finalPuzzleData = finalGameRecord["puzzleData"] as? String,
+                   let finalBoard = SudokuBoard.fromJSONString(finalPuzzleData) {
+                    await MainActor.run {
+                        if var localBoard = self.currentBoard {
+                            for r in 0..<9 {
+                                for c in 0..<9 {
+                                    let cloudCell = finalBoard[r, c]
+                                    let localCell = localBoard[r, c]
+                                    if cloudCell.value != nil && localCell.value == nil {
+                                        localBoard[r, c] = cloudCell
+                                    } else if let cb = cloudCell.completedBy, localCell.completedBy == nil {
+                                        localBoard[r, c].completedBy = cb
+                                    }
+                                }
+                            }
+                            self.currentBoard = localBoard
+                            game.puzzleData = localBoard.toJSONString()
+                        }
+                    }
+                }
+
                 // The completing player already calculated final scores for
                 // everyone and saved them to CloudKit. Do a fresh fetch of
                 // player states to get the authoritative bonus-applied scores
