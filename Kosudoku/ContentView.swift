@@ -293,12 +293,6 @@ struct ContentView: View {
         // Wait a bit for the view to load
         try? await Task.sleep(for: .milliseconds(100))
         
-        // If user is signed out, show profile setup
-        if cloudKitService.isSignedOut {
-            showingProfileSetup = true
-            return
-        }
-        
         // Check if user is authenticated
         guard cloudKitService.isAuthenticated else {
             return

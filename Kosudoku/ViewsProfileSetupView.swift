@@ -152,7 +152,6 @@ struct ProfileSetupView: View {
             
             // Restore the existing profile
             cloudKitService.currentUserProfile = profile
-            cloudKitService.isSignedOut = false
             cloudKitService.isAuthenticated = true
             
             isCreating = false
@@ -192,9 +191,8 @@ struct ProfileSetupView: View {
             // Save again to persist the CloudKit record name
             try modelContext.save()
             
-            // Update CloudKit service and clear signed-out flag
+            // Update CloudKit service
             cloudKitService.currentUserProfile = profile
-            cloudKitService.isSignedOut = false
             cloudKitService.isAuthenticated = true
             
             // Request discoverability so contacts can find this user

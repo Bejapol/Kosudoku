@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 import Contacts
 import CloudKit
+import MessageUI
 
 /// A contact discovered via CloudKit who also uses Kosudoku
 struct DiscoveredContact: Identifiable {
@@ -384,6 +385,8 @@ struct DiscoveredUserRow: View {
 struct InviteContactRow: View {
     let contact: CNContact
     let appStoreURL: URL
+    @State private var showingMessageCompose = false
+    @State private var showingMailCompose = false
     
     private var contactName: String {
         let fullName = [contact.givenName, contact.familyName]
@@ -392,9 +395,18 @@ struct InviteContactRow: View {
         return fullName.isEmpty ? "Unknown" : fullName
     }
     
-    private var phoneLabel: String? {
+    private var primaryPhone: String? {
         guard let phone = contact.phoneNumbers.first else { return nil }
         return phone.value.stringValue
+    }
+    
+    private var primaryEmail: String? {
+        guard let email = contact.emailAddresses.first else { return nil }
+        return email.value as String
+    }
+    
+    private var inviteMessage: String {
+        "Hey! I've been playing Kosudoku — it's a multiplayer Sudoku game. Join me! \(appStoreURL.absoluteString)"
     }
     
     var body: some View {
@@ -424,7 +436,7 @@ struct InviteContactRow: View {
                     .font(.body)
                     .fontWeight(.medium)
                 
-                if let phone = phoneLabel {
+                if let phone = primaryPhone {
                     Text(phone)
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -433,19 +445,133 @@ struct InviteContactRow: View {
             
             Spacer()
             
-            ShareLink(
-                item: appStoreURL,
-                subject: Text("Join me on Kosudoku!"),
-                message: Text("Hey! I've been playing Kosudoku — it's a multiplayer Sudoku game. Join me!")
-            ) {
-                Text("Invite")
-                    .font(.caption)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
+            // Message invite (preferred if phone number available)
+            if primaryPhone != nil && MFMessageComposeViewController.canSendText() {
+                Button {
+                    showingMessageCompose = true
+                } label: {
+                    Text("Invite")
+                        .font(.caption)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                }
+                .sheet(isPresented: $showingMessageCompose) {
+                    MessageComposeView(
+                        recipients: [primaryPhone!],
+                        body: inviteMessage
+                    )
+                    .ignoresSafeArea()
+                }
+            } else if primaryEmail != nil && MFMailComposeViewController.canSendMail() {
+                // Fall back to email if no phone
+                Button {
+                    showingMailCompose = true
+                } label: {
+                    Text("Invite")
+                        .font(.caption)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                }
+                .sheet(isPresented: $showingMailCompose) {
+                    MailComposeView(
+                        recipients: [primaryEmail!],
+                        subject: "Join me on Kosudoku!",
+                        body: inviteMessage
+                    )
+                    .ignoresSafeArea()
+                }
+            } else {
+                // Fallback to share sheet if neither messaging nor mail is available
+                ShareLink(
+                    item: appStoreURL,
+                    subject: Text("Join me on Kosudoku!"),
+                    message: Text("Hey! I've been playing Kosudoku — it's a multiplayer Sudoku game. Join me!")
+                ) {
+                    Text("Invite")
+                        .font(.caption)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                }
             }
+        }
+    }
+}
+
+// MARK: - Message Compose View
+
+struct MessageComposeView: UIViewControllerRepresentable {
+    let recipients: [String]
+    let body: String
+    @Environment(\.dismiss) private var dismiss
+    
+    func makeUIViewController(context: Context) -> MFMessageComposeViewController {
+        let controller = MFMessageComposeViewController()
+        controller.recipients = recipients
+        controller.body = body
+        controller.messageComposeDelegate = context.coordinator
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: MFMessageComposeViewController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(dismiss: dismiss)
+    }
+    
+    class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
+        let dismiss: DismissAction
+        
+        init(dismiss: DismissAction) {
+            self.dismiss = dismiss
+        }
+        
+        func messageComposeViewController(_ controller: MFMessageComposeViewController, didFinishWith result: MessageComposeResult) {
+            dismiss()
+        }
+    }
+}
+
+// MARK: - Mail Compose View
+
+struct MailComposeView: UIViewControllerRepresentable {
+    let recipients: [String]
+    let subject: String
+    let body: String
+    @Environment(\.dismiss) private var dismiss
+    
+    func makeUIViewController(context: Context) -> MFMailComposeViewController {
+        let controller = MFMailComposeViewController()
+        controller.setToRecipients(recipients)
+        controller.setSubject(subject)
+        controller.setMessageBody(body, isHTML: false)
+        controller.mailComposeDelegate = context.coordinator
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: MFMailComposeViewController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(dismiss: dismiss)
+    }
+    
+    class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
+        let dismiss: DismissAction
+        
+        init(dismiss: DismissAction) {
+            self.dismiss = dismiss
+        }
+        
+        func mailComposeController(_ controller: MFMailComposeViewController, didFinishWith result: MFMailComposeResult, error: Error?) {
+            dismiss()
         }
     }
 }

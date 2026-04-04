@@ -13,7 +13,7 @@ struct ProfileView: View {
     @State private var cloudKitService = CloudKitService.shared
     @Query private var profiles: [UserProfile]
     @State private var showingEditProfile = false
-    @State private var showingSignOutConfirmation = false
+
     @State private var showingColorPicker = false
     
     var currentProfile: UserProfile? {
@@ -288,10 +288,6 @@ struct ProfileView: View {
                         Button("Edit Profile") {
                             showingEditProfile = true
                         }
-                        
-                        Button("Sign Out", role: .destructive) {
-                            showingSignOutConfirmation = true
-                        }
                     }
                 } else {
                     ContentUnavailableView(
@@ -312,51 +308,7 @@ struct ProfileView: View {
                     ColorPickerSheet(profile: profile)
                 }
             }
-            .confirmationDialog(
-                "Sign Out",
-                isPresented: $showingSignOutConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Delete Profile Data", role: .destructive) {
-                    signOutAndDeleteData()
-                }
-                Button("Sign Out (Keep Data)", role: .destructive) {
-                    signOutKeepData()
-                }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("Choose how you want to sign out. Deleting profile data will remove your local profile but won't affect your CloudKit data.")
-            }
         }
-    }
-    
-    private func signOutAndDeleteData() {
-        // Set signed-out flag first to prevent auto-reload
-        cloudKitService.isSignedOut = true
-        
-        // Clear CloudKit service state
-        cloudKitService.isAuthenticated = false
-        cloudKitService.currentUserProfile = nil
-        cloudKitService.currentUserRecordName = nil
-        
-        // Delete all local profiles
-        for profile in profiles {
-            modelContext.delete(profile)
-        }
-        
-        // Save the deletion
-        try? modelContext.save()
-    }
-    
-    private func signOutKeepData() {
-        // Set signed-out flag to prevent auto-reload
-        cloudKitService.isSignedOut = true
-        
-        // Just clear the CloudKit service state
-        // Profile data remains in local database
-        cloudKitService.isAuthenticated = false
-        cloudKitService.currentUserProfile = nil
-        cloudKitService.currentUserRecordName = nil
     }
 }
 

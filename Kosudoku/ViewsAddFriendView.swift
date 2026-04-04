@@ -12,6 +12,7 @@ import CloudKit
 struct AddFriendView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Query private var friendships: [Friendship]
     @State private var searchText = ""
     @State private var searchResults: [CKRecord] = []
     @State private var isSearching = false
@@ -32,7 +33,9 @@ struct AddFriendView: View {
                         .foregroundColor(.secondary)
                 } else {
                     ForEach(searchResults, id: \.recordID) { record in
-                        UserSearchResultRow(record: record) {
+                        let ownerName = record["ownerRecordName"] as? String ?? ""
+                        let status = friendshipStatus(for: ownerName)
+                        UserSearchResultRow(record: record, friendshipStatus: status) {
                             Task {
                                 await sendFriendRequest(record)
                             }
@@ -66,7 +69,7 @@ struct AddFriendView: View {
             }
             .safeAreaInset(edge: .bottom) {
                 NavigationLink {
-                    ContactsInviteView(friendships: [])
+                    ContactsInviteView(friendships: friendships)
                 } label: {
                     Label("Find from Contacts", systemImage: "person.crop.rectangle.stack")
                         .frame(maxWidth: .infinity)
@@ -105,6 +108,15 @@ struct AddFriendView: View {
         }
         
         isSearching = false
+    }
+    
+    /// Returns the friendship status for a given ownerRecordName, or nil if not a friend
+    private func friendshipStatus(for ownerRecordName: String) -> FriendshipStatus? {
+        guard let currentUser = cloudKitService.currentUserRecordName else { return nil }
+        return friendships.first { friendship in
+            (friendship.userRecordName == currentUser && friendship.friendRecordName == ownerRecordName) ||
+            (friendship.friendRecordName == currentUser && friendship.userRecordName == ownerRecordName)
+        }?.status
     }
     
     private func sendFriendRequest(_ record: CKRecord) async {
@@ -150,6 +162,7 @@ struct AddFriendView: View {
 
 struct UserSearchResultRow: View {
     let record: CKRecord
+    var friendshipStatus: FriendshipStatus?
     let onAdd: () -> Void
     
     var body: some View {
@@ -179,12 +192,41 @@ struct UserSearchResultRow: View {
             
             Spacer()
             
-            Button {
-                onAdd()
-            } label: {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.blue)
+            if let status = friendshipStatus {
+                switch status {
+                case .accepted:
+                    Text("Friends")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.green.opacity(0.15))
+                        .cornerRadius(8)
+                case .pending:
+                    Text("Pending")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color(.systemGray5))
+                        .cornerRadius(8)
+                case .blocked:
+                    Text("Blocked")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.red.opacity(0.15))
+                        .cornerRadius(8)
+                }
+            } else {
+                Button {
+                    onAdd()
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.blue)
+                }
             }
         }
     }

@@ -22,7 +22,7 @@ class CloudKitService {
     var currentUserRecordName: String?
     var currentUserProfile: UserProfile?
     var isAuthenticated = false
-    var isSignedOut = false  // Prevents auto-reload of profile after sign out
+
     
     // Record types
     enum RecordType: String {
