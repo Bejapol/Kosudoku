@@ -8,16 +8,29 @@
 import SwiftUI
 import PhotosUI
 
+extension ProfileFrame {
+    var gradientColors: [Color] {
+        switch self {
+        case .none: return [.clear]
+        case .gold: return [Color.yellow, Color.orange, Color.yellow]
+        case .diamond: return [Color.cyan, Color.white, Color.cyan]
+        case .fire: return [Color.red, Color.orange, Color.yellow]
+        }
+    }
+}
+
 /// Reusable profile photo component that displays user avatars
 struct ProfilePhotoView: View {
     let imageData: Data?
     let displayName: String
     let size: CGFloat
+    var profileFrame: ProfileFrame? = nil
     
-    init(imageData: Data?, displayName: String, size: CGFloat = 40) {
+    init(imageData: Data?, displayName: String, size: CGFloat = 40, profileFrame: ProfileFrame? = nil) {
         self.imageData = imageData
         self.displayName = displayName
         self.size = size
+        self.profileFrame = profileFrame
     }
     
     var body: some View {
@@ -64,7 +77,26 @@ struct ProfilePhotoView: View {
             Circle()
                 .strokeBorder(Color(.systemBackground), lineWidth: 2)
         )
+        .overlay(
+            frameOverlay
+        )
         .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+    }
+    
+    @ViewBuilder
+    private var frameOverlay: some View {
+        if let frame = profileFrame, frame != .none {
+            Circle()
+                .strokeBorder(
+                    LinearGradient(
+                        colors: frame.gradientColors,
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: max(2, size * 0.06)
+                )
+                .frame(width: size + max(4, size * 0.1), height: size + max(4, size * 0.1))
+        }
     }
     
     // Generate initials from display name

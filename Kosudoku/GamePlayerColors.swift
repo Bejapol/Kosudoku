@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// Predefined palette of 6 perceptually-distinct player colors
+/// Predefined palette of player colors - 6 default + 4 premium unlockable
 enum PlayerColor: Int, CaseIterable {
     case coral    = 0  // warm red-orange
     case teal     = 1  // cool blue-green
@@ -15,15 +15,49 @@ enum PlayerColor: Int, CaseIterable {
     case violet   = 3  // purple
     case lime     = 4  // yellow-green
     case rose     = 5  // hot pink
+    // Premium unlockable colors
+    case iceBlue        = 6
+    case sunsetOrange   = 7
+    case forestGreen    = 8
+    case midnightPurple = 9
 
     var color: Color {
         switch self {
-        case .coral:  return Color(red: 0.96, green: 0.35, blue: 0.28)
-        case .teal:   return Color(red: 0.07, green: 0.69, blue: 0.62)
-        case .amber:  return Color(red: 0.96, green: 0.62, blue: 0.11)
-        case .violet: return Color(red: 0.60, green: 0.25, blue: 0.90)
-        case .lime:   return Color(red: 0.42, green: 0.78, blue: 0.16)
-        case .rose:   return Color(red: 0.93, green: 0.22, blue: 0.58)
+        case .coral:          return Color(red: 0.96, green: 0.35, blue: 0.28)
+        case .teal:           return Color(red: 0.07, green: 0.69, blue: 0.62)
+        case .amber:          return Color(red: 0.96, green: 0.62, blue: 0.11)
+        case .violet:         return Color(red: 0.60, green: 0.25, blue: 0.90)
+        case .lime:           return Color(red: 0.42, green: 0.78, blue: 0.16)
+        case .rose:           return Color(red: 0.93, green: 0.22, blue: 0.58)
+        case .iceBlue:        return Color(red: 0.40, green: 0.75, blue: 0.95)
+        case .sunsetOrange:   return Color(red: 1.00, green: 0.50, blue: 0.20)
+        case .forestGreen:    return Color(red: 0.15, green: 0.55, blue: 0.25)
+        case .midnightPurple: return Color(red: 0.35, green: 0.15, blue: 0.60)
+        }
+    }
+    
+    /// The 6 original colors available to everyone
+    static var defaultColors: [PlayerColor] {
+        [.coral, .teal, .amber, .violet, .lime, .rose]
+    }
+    
+    /// The 4 premium colors that must be purchased
+    static var premiumColors: [PlayerColor] {
+        [.iceBlue, .sunsetOrange, .forestGreen, .midnightPurple]
+    }
+    
+    var displayName: String {
+        switch self {
+        case .coral: return "Coral"
+        case .teal: return "Teal"
+        case .amber: return "Amber"
+        case .violet: return "Violet"
+        case .lime: return "Lime"
+        case .rose: return "Rose"
+        case .iceBlue: return "Ice Blue"
+        case .sunsetOrange: return "Sunset Orange"
+        case .forestGreen: return "Forest Green"
+        case .midnightPurple: return "Midnight Purple"
         }
     }
 }

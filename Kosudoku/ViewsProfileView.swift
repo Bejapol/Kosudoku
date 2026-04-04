@@ -36,12 +36,25 @@ struct ProfileView: View {
                                 ProfilePhotoView(
                                     imageData: profile.avatarImageData,
                                     displayName: profile.displayName,
-                                    size: 80
+                                    size: 80,
+                                    profileFrame: profile.activeProfileFrame
                                 )
                                 
-                                Text(profile.displayName)
-                                    .font(.title2)
-                                    .bold()
+                                HStack(spacing: 6) {
+                                    Text(profile.displayName)
+                                        .font(.title2)
+                                        .bold()
+                                    
+                                    if profile.activeTitleBadge != .none {
+                                        Text(profile.activeTitleBadge.displayName)
+                                            .font(.caption)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.purple.opacity(0.15))
+                                            .foregroundColor(.purple)
+                                            .cornerRadius(4)
+                                    }
+                                }
                                 
                                 Text("@\(profile.username)")
                                     .font(.subheadline)
@@ -95,6 +108,29 @@ struct ProfileView: View {
                                     .foregroundColor(.secondary)
                             }
                         }
+                        
+                        HStack {
+                            Label("Win Streak", systemImage: "flame.fill")
+                                .foregroundColor(.orange)
+                            Spacer()
+                            Text("\(profile.currentWinStreak)")
+                                .bold()
+                        }
+                        
+                        HStack {
+                            Text("Best Streak")
+                            Spacer()
+                            Text("\(profile.bestWinStreak)")
+                                .bold()
+                        }
+                        
+                        if profile.hasExtendedStats {
+                            NavigationLink {
+                                ExtendedStatsView()
+                            } label: {
+                                Label("Extended Stats", systemImage: "chart.bar.fill")
+                            }
+                        }
                     }
                     
                     Section("My Goodies") {
@@ -105,14 +141,69 @@ struct ProfileView: View {
                                 Circle()
                                     .fill(color.color)
                                     .frame(width: 24, height: 24)
-                                Text("Custom Game Color")
+                                Text("Game Color: \(color.displayName)")
                                 Spacer()
                                 Button("Change") {
                                     showingColorPicker = true
                                 }
                                 .font(.subheadline)
                             }
-                        } else {
+                        }
+                        
+                        if profile.activeCellTheme != .classic {
+                            Label("Cell Theme: \(profile.activeCellTheme.displayName)", systemImage: profile.activeCellTheme.icon)
+                        }
+                        if profile.activeBoardSkin != .classic {
+                            Label("Board Skin: \(profile.activeBoardSkin.displayName)", systemImage: profile.activeBoardSkin.icon)
+                        }
+                        if profile.activeVictoryAnimation != .confetti {
+                            Label("Victory: \(profile.activeVictoryAnimation.displayName)", systemImage: profile.activeVictoryAnimation.icon)
+                        }
+                        if profile.activeProfileFrame != .none {
+                            Label("Frame: \(profile.activeProfileFrame.displayName)", systemImage: profile.activeProfileFrame.icon)
+                        }
+                        if profile.activeTitleBadge != .none {
+                            Label("Title: \(profile.activeTitleBadge.displayName)", systemImage: profile.activeTitleBadge.icon)
+                        }
+                        if profile.activeGameInviteTheme != .classic {
+                            Label("Invite: \(profile.activeGameInviteTheme.displayName)", systemImage: profile.activeGameInviteTheme.icon)
+                        }
+                        if profile.hasEmotePack {
+                            Label("Emote Pack", systemImage: "face.smiling")
+                                .foregroundColor(.green)
+                        }
+                        if profile.hasExtendedStats {
+                            Label("Extended Stats", systemImage: "chart.bar.fill")
+                                .foregroundColor(.green)
+                        }
+                        
+                        // Consumable counts
+                        if profile.hintTokens > 0 || profile.timeFreezes > 0 || profile.undoShields > 0 || profile.streakSavers > 0 {
+                            HStack(spacing: 16) {
+                                if profile.hintTokens > 0 {
+                                    Label("\(profile.hintTokens)", systemImage: "lightbulb.fill")
+                                        .font(.caption)
+                                        .foregroundColor(.orange)
+                                }
+                                if profile.timeFreezes > 0 {
+                                    Label("\(profile.timeFreezes)", systemImage: "snowflake")
+                                        .font(.caption)
+                                        .foregroundColor(.cyan)
+                                }
+                                if profile.undoShields > 0 {
+                                    Label("\(profile.undoShields)", systemImage: "shield.fill")
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                }
+                                if profile.streakSavers > 0 {
+                                    Label("\(profile.streakSavers)", systemImage: "flame.fill")
+                                        .font(.caption)
+                                        .foregroundColor(.red)
+                                }
+                            }
+                        }
+                        
+                        if !profile.hasCustomColor && profile.activeCellTheme == .classic && profile.activeBoardSkin == .classic && profile.activeProfileFrame == .none && profile.activeTitleBadge == .none && !profile.hasEmotePack {
                             HStack {
                                 Image(systemName: "storefront.fill")
                                     .foregroundColor(.secondary)

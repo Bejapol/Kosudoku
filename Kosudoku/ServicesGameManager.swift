@@ -70,6 +70,20 @@ class GameManager {
     private var isMakingMove = false
     private var isJoining = false
     
+    // MARK: - Boost State (per game)
+    
+    /// Whether the player has used their hint token this game
+    private(set) var hasUsedHintToken = false
+    /// Whether the player has used their time freeze this game
+    private(set) var hasUsedTimeFreeze = false
+    /// Whether the player has used their undo shield this game
+    private(set) var hasUsedUndoShield = false
+    /// Whether time is currently frozen (30s timer)
+    var isTimeFrozen = false
+    /// Whether a time freeze was used (for speed bonus adjustment)
+    private var didUseTimeFreeze = false
+    private var freezeTimer: Timer?
+    
     private let cloudKit = CloudKitService.shared
     private let modelContext: ModelContext
     
@@ -228,6 +242,9 @@ class GameManager {
         
         currentPlayerState = playerState
         currentGame = session
+        
+        // Reset per-game boost flags
+        resetBoostFlags()
         
         // Load board
         if let board = SudokuBoard.fromJSONString(session.puzzleData) {
@@ -551,15 +568,30 @@ class GameManager {
             lastCellEffect = CellEffect(row: row, col: col, kind: .correct, value: value, color: effectColor, points: points)
             
         } else {
-            // Incorrect guess
-            playerState.incorrectGuesses += 1
-            playerState.score += ScoringSystem.pointsForIncorrectGuess()
-            playerState.lastMoveAt = Date()
-            
-            // Play incorrect buzzer and trigger visual effect
-            GameSoundManager.shared.playIncorrectSound()
+            // Incorrect guess — check for undo shield first
             let effectColor = playerColorMap[playerState.playerRecordName]?.color ?? PlayerColor.coral.color
-            lastCellEffect = CellEffect(row: row, col: col, kind: .incorrect, value: value, color: effectColor, points: ScoringSystem.pointsForIncorrectGuess())
+            
+            if !hasUsedUndoShield,
+               let profile = cloudKit.currentUserProfile,
+               profile.undoShields > 0 {
+                // Shield activates — no penalty
+                profile.undoShields -= 1
+                hasUsedUndoShield = true
+                playerState.lastMoveAt = Date()
+                
+                GameSoundManager.shared.playShieldSound()
+                lastCellEffect = CellEffect(row: row, col: col, kind: .incorrect, value: value, color: effectColor, points: 0)
+                
+                try? await cloudKit.saveUserProfile(profile)
+            } else {
+                // Normal incorrect penalty
+                playerState.incorrectGuesses += 1
+                playerState.score += ScoringSystem.pointsForIncorrectGuess()
+                playerState.lastMoveAt = Date()
+                
+                GameSoundManager.shared.playIncorrectSound()
+                lastCellEffect = CellEffect(row: row, col: col, kind: .incorrect, value: value, color: effectColor, points: ScoringSystem.pointsForIncorrectGuess())
+            }
         }
         
         // Save locally
@@ -645,6 +677,114 @@ class GameManager {
         }
     }
     
+    // MARK: - Gameplay Boosts
+    
+    /// Whether hint token can be used right now
+    var canUseHintToken: Bool {
+        !hasUsedHintToken &&
+        (otherPlayers.count > 0 || (currentGame?.invitedPlayers.isEmpty == false)) &&
+        (cloudKit.currentUserProfile?.hintTokens ?? 0) > 0
+    }
+    
+    /// Whether time freeze can be used right now
+    var canUseTimeFreeze: Bool {
+        !hasUsedTimeFreeze && !isTimeFrozen &&
+        (otherPlayers.count > 0 || (currentGame?.invitedPlayers.isEmpty == false)) &&
+        (cloudKit.currentUserProfile?.timeFreezes ?? 0) > 0
+    }
+    
+    /// Use a hint token to reveal one correct cell in multiplayer
+    func useHintToken() async {
+        guard canUseHintToken,
+              var board = currentBoard,
+              let solution = solutionBoard,
+              let playerState = currentPlayerState,
+              let profile = cloudKit.currentUserProfile else { return }
+        
+        // Find empty cells
+        var emptyCells: [(Int, Int)] = []
+        for row in 0..<9 {
+            for col in 0..<9 {
+                if !board[row, col].isFixed && board[row, col].value == nil {
+                    emptyCells.append((row, col))
+                }
+            }
+        }
+        guard let cell = emptyCells.randomElement(),
+              let correctValue = solution[cell.0, cell.1].value else { return }
+        
+        // Fill the cell
+        board[cell.0, cell.1].value = correctValue
+        board[cell.0, cell.1].completedBy = playerState.playerRecordName
+        currentBoard = board
+        
+        playerState.currentBoardData = board.toJSONString()
+        playerState.cellsCompleted.append("\(cell.0)-\(cell.1)")
+        playerState.lastMoveAt = Date()
+        
+        // Update game puzzle data
+        currentGame?.puzzleData = board.toJSONString()
+        
+        // Deduct token
+        profile.hintTokens -= 1
+        hasUsedHintToken = true
+        
+        // Play hint sound and show effect
+        GameSoundManager.shared.playHintSound()
+        let effectColor = playerColorMap[playerState.playerRecordName]?.color ?? PlayerColor.coral.color
+        lastCellEffect = CellEffect(row: cell.0, col: cell.1, kind: .correct, value: correctValue, color: effectColor, points: 0)
+        
+        // Save locally
+        try? modelContext.save()
+        
+        // Sync to CloudKit
+        if let grn = currentGame?.cloudKitRecordName {
+            try? await cloudKit.savePlayerState(playerState, gameRecordName: grn)
+            try? await cloudKit.updateGameSession(currentGame!)
+            try? await cloudKit.saveUserProfile(profile)
+        }
+        
+        // Check completion
+        if SudokuGenerator.isBoardComplete(board) {
+            try? await completeGame()
+        }
+    }
+    
+    /// Activate time freeze: pauses the local timer for 30 seconds
+    func useTimeFreeze() async {
+        guard canUseTimeFreeze,
+              let profile = cloudKit.currentUserProfile else { return }
+        
+        profile.timeFreezes -= 1
+        hasUsedTimeFreeze = true
+        didUseTimeFreeze = true
+        isTimeFrozen = true
+        
+        GameSoundManager.shared.playFreezeSound()
+        
+        try? await cloudKit.saveUserProfile(profile)
+        
+        // Unfreeze after 30 seconds
+        let timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: false) { _ in }
+        freezeTimer = timer
+        Task {
+            try? await Task.sleep(for: .seconds(30))
+            isTimeFrozen = false
+            timer.invalidate()
+        }
+    }
+    
+    /// Reset per-game boost flags (called when joining a new game)
+    private func resetBoostFlags() {
+        hasUsedHintToken = false
+        hasUsedTimeFreeze = false
+        hasUsedUndoShield = false
+        isTimeFrozen = false
+        didUseTimeFreeze = false
+        freezeTimer?.invalidate()
+        freezeTimer = nil
+    }
+    
     /// Complete the game
     ///
     /// The completing player is the single authority for final scores:
@@ -711,11 +851,14 @@ class GameManager {
         }
         
         // Apply speed bonus to final scores
+        // If this player used a time freeze, subtract 30s from their elapsed time
+        let adjustedTimeElapsed = didUseTimeFreeze ? max(0, timeElapsed - 30.0) : timeElapsed
         for entry in allPlayerStates {
             let ps = entry.state
+            let elapsed = entry.isLocal ? adjustedTimeElapsed : timeElapsed
             let speedPoints = ScoringSystem.speedBonus(
                 cellsCompleted: ps.cellsCompleted.count,
-                timeElapsed: timeElapsed
+                timeElapsed: elapsed
             )
             ps.score += speedPoints
             ps.score = max(0, ps.score)
@@ -759,9 +902,20 @@ class GameManager {
             profile.gamesPlayed += 1
             if isWinner {
                 profile.gamesWon += 1
+                // Win streak
+                profile.currentWinStreak += 1
+                profile.bestWinStreak = max(profile.bestWinStreak, profile.currentWinStreak)
                 // Award +1 quicket for winning a multiplayer game only
                 if !isSoloGame {
                     profile.quickets += 1
+                }
+            } else {
+                // Loss — check streak saver before resetting
+                if profile.streakSavers > 0 && profile.currentWinStreak > 0 && !isSoloGame {
+                    profile.streakSavers -= 1
+                    // Streak preserved!
+                } else {
+                    profile.currentWinStreak = 0
                 }
             }
         }

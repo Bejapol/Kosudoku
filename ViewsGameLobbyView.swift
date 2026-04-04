@@ -88,8 +88,10 @@ struct GameLobbyView: View {
                         if let game {
                             LobbyPlayerRow(
                                 name: hostDisplayName(game: game),
+                                ownerRecordName: game.hostRecordName,
                                 status: .ready,
-                                isHost: true
+                                isHost: true,
+                                playerColor: gameManager.playerColorMap[game.hostRecordName]?.color
                             )
                             .padding(.horizontal)
                         }
@@ -100,8 +102,10 @@ struct GameLobbyView: View {
                                 let status = playerStatus(for: playerRecordName)
                                 LobbyPlayerRow(
                                     name: displayName(for: playerRecordName),
+                                    ownerRecordName: playerRecordName,
                                     status: status,
-                                    isHost: false
+                                    isHost: false,
+                                    playerColor: gameManager.playerColorMap[playerRecordName]?.color
                                 )
                                 .padding(.horizontal)
                             }
@@ -109,6 +113,16 @@ struct GameLobbyView: View {
                     }
                     .padding(.bottom, 20)
                 }
+                
+                // Emote bar
+                EmoteBarView(
+                    onEmoteTap: { emote in
+                        Task {
+                            await sendEmote(emote)
+                        }
+                    },
+                    isUnlocked: cloudKitService.currentUserProfile?.hasEmotePack ?? false
+                )
                 
                 Divider()
                 
@@ -252,6 +266,31 @@ struct GameLobbyView: View {
         }
     }
     
+    // MARK: - Emotes
+    
+    private func sendEmote(_ emote: GameEmote) async {
+        guard let senderRecordName = cloudKitService.currentUserRecordName,
+              let username = cloudKitService.currentUserProfile?.username,
+              let game = gameManager.currentGame,
+              let gameRecordName = game.cloudKitRecordName else {
+            return
+        }
+        
+        let message = ChatMessage(
+            senderRecordName: senderRecordName,
+            senderUsername: username,
+            content: emote.rawValue,
+            messageType: .reaction,
+            gameSession: game
+        )
+        
+        do {
+            try await cloudKitService.sendChatMessage(message, gameRecordName: gameRecordName)
+        } catch {
+            print("Error sending lobby emote: \(error)")
+        }
+    }
+    
     // MARK: - Helpers
     
     private func hostDisplayName(game: GameSession) -> String {
@@ -310,34 +349,47 @@ enum LobbyPlayerStatus {
 
 struct LobbyPlayerRow: View {
     let name: String
+    let ownerRecordName: String
     let status: LobbyPlayerStatus
     let isHost: Bool
+    let playerColor: Color?
+    
+    @State private var profileImageData: Data?
+    @State private var cloudKitService = CloudKitService.shared
+    
+    /// The accent color: use the player's game color if available, otherwise fall back to status-based color
+    private var accentColor: Color {
+        if let playerColor { return playerColor }
+        switch status {
+        case .ready: return .green
+        case .waiting: return .orange
+        case .declined: return .gray
+        }
+    }
     
     var body: some View {
         HStack(spacing: 12) {
-            // Player avatar placeholder
-            Circle()
-                .fill(avatarColor.opacity(0.2))
-                .frame(width: 40, height: 40)
-                .overlay {
-                    Text(String(name.prefix(1)).uppercased())
-                        .font(.headline)
-                        .foregroundColor(avatarColor)
-                }
+            // Profile photo
+            ProfilePhotoView(
+                imageData: profileImageData,
+                displayName: name,
+                size: 40
+            )
             
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(name)
                         .font(.body)
                         .fontWeight(.medium)
+                        .foregroundColor(accentColor)
                     
                     if isHost {
                         Text("Host")
                             .font(.caption2)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color.blue.opacity(0.2))
-                            .foregroundColor(.blue)
+                            .background(accentColor.opacity(0.2))
+                            .foregroundColor(accentColor)
                             .cornerRadius(4)
                     }
                 }
@@ -355,6 +407,9 @@ struct LobbyPlayerRow: View {
         .padding(12)
         .background(Color(.systemGray6))
         .cornerRadius(10)
+        .task {
+            await loadProfilePhoto()
+        }
     }
     
     private var statusText: String {
@@ -373,14 +428,6 @@ struct LobbyPlayerRow: View {
         }
     }
     
-    private var avatarColor: Color {
-        switch status {
-        case .ready: return .green
-        case .waiting: return .orange
-        case .declined: return .gray
-        }
-    }
-    
     @ViewBuilder
     private var statusIcon: some View {
         switch status {
@@ -394,6 +441,39 @@ struct LobbyPlayerRow: View {
             Image(systemName: "xmark.circle.fill")
                 .foregroundColor(.red)
                 .font(.title3)
+        }
+    }
+    
+    // MARK: - Photo Loading
+    
+    private static var photoCache: [String: Data] = [:]
+    
+    private func loadProfilePhoto() async {
+        if let cached = Self.photoCache[ownerRecordName] {
+            if profileImageData == nil { profileImageData = cached }
+            return
+        }
+        
+        // Current user — use local profile
+        if ownerRecordName == cloudKitService.currentUserRecordName,
+           let currentProfile = cloudKitService.currentUserProfile {
+            profileImageData = currentProfile.avatarImageData
+            if let data = currentProfile.avatarImageData {
+                Self.photoCache[ownerRecordName] = data
+            }
+            return
+        }
+        
+        // Other users — fetch from CloudKit
+        do {
+            if let profile = try await cloudKitService.fetchUserProfileByOwner(ownerRecordName: ownerRecordName) {
+                profileImageData = profile.avatarImageData
+                if let data = profile.avatarImageData {
+                    Self.photoCache[ownerRecordName] = data
+                }
+            }
+        } catch {
+            print("Failed to load profile photo for \(name): \(error)")
         }
     }
 }

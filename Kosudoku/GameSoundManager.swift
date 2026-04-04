@@ -228,6 +228,24 @@ final class GameSoundManager {
         return buffer
     }
     
+    /// Play a shimmering shield activation sound
+    func playShieldSound() {
+        guard isSetUp, let buffer = generateShieldBuffer() else { return }
+        playBuffer(buffer)
+    }
+    
+    /// Play a crystalline freeze sound
+    func playFreezeSound() {
+        guard isSetUp, let buffer = generateFreezeBuffer() else { return }
+        playBuffer(buffer)
+    }
+    
+    /// Play a soft hint reveal sound
+    func playHintSound() {
+        guard isSetUp, let buffer = generateHintBuffer() else { return }
+        playBuffer(buffer)
+    }
+    
     /// Generates a short abrupt buzzer (low frequency with slight noise)
     private func generateBuzzerBuffer() -> AVAudioPCMBuffer? {
         let duration: Double = 0.2
@@ -250,6 +268,76 @@ final class GameSoundManager {
             data[i] = Float(clipped) * envelope
         }
         
+        return buffer
+    }
+    
+    /// Generates a shimmering ascending tone for shield activation
+    private func generateShieldBuffer() -> AVAudioPCMBuffer? {
+        let duration: Double = 0.35
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let data = buffer.floatChannelData?[0] else { return nil }
+        buffer.frameLength = frameCount
+        
+        for i in 0..<Int(frameCount) {
+            let t = Double(i) / sampleRate
+            let progress = Double(i) / Double(frameCount)
+            let envelope = Float(sin(Double.pi * progress) * 0.4)
+            // Rising shimmer: two tones sweeping up
+            let freq1 = 800.0 + 600.0 * progress
+            let freq2 = 1200.0 + 800.0 * progress
+            let tone = Float(sin(2.0 * .pi * freq1 * t)) * 0.6 + Float(sin(2.0 * .pi * freq2 * t)) * 0.4
+            data[i] = tone * envelope
+        }
+        return buffer
+    }
+    
+    /// Generates a crystalline descending tone for time freeze
+    private func generateFreezeBuffer() -> AVAudioPCMBuffer? {
+        let duration: Double = 0.4
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let data = buffer.floatChannelData?[0] else { return nil }
+        buffer.frameLength = frameCount
+        
+        for i in 0..<Int(frameCount) {
+            let t = Double(i) / sampleRate
+            let progress = Double(i) / Double(frameCount)
+            let envelope = Float(max(0, 1.0 - progress) * 0.35)
+            // Descending crystalline tone
+            let freq = 2000.0 - 1200.0 * progress
+            let tone = Float(sin(2.0 * .pi * freq * t))
+            // Add sparkle harmonics
+            let sparkle = Float(sin(2.0 * .pi * freq * 2.5 * t)) * 0.3
+            data[i] = (tone + sparkle) * envelope
+        }
+        return buffer
+    }
+    
+    /// Generates a gentle ascending chime for hint reveal
+    private func generateHintBuffer() -> AVAudioPCMBuffer? {
+        let duration: Double = 0.3
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let data = buffer.floatChannelData?[0] else { return nil }
+        buffer.frameLength = frameCount
+        let freq1: Double = 880   // A5
+        let freq2: Double = 1320  // E6
+        let thirdFrames = Int(frameCount / 3)
+        
+        for i in 0..<Int(frameCount) {
+            let t = Double(i) / sampleRate
+            let progress = Double(i) / Double(frameCount)
+            let envelope = Float(max(0, 1.0 - progress * progress) * 0.35)
+            if i < thirdFrames {
+                data[i] = Float(sin(2.0 * .pi * freq1 * t)) * envelope
+            } else {
+                data[i] = Float(sin(2.0 * .pi * freq2 * t)) * envelope
+            }
+        }
         return buffer
     }
 }

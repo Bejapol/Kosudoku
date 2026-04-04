@@ -22,56 +22,15 @@ struct GameChatView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Messages list
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(gameMessages, id: \.stableID) { message in
-                                if message.messageType == .system {
-                                    SystemMessageView(message: message)
-                                } else {
-                                    ChatMessageBubble(
-                                        message: message,
-                                        isCurrentUser: message.senderRecordName == cloudKitService.currentUserRecordName
-                                    )
-                                }
-                            }
-                            // Invisible anchor at the bottom
-                            Color.clear
-                                .frame(height: 1)
-                                .id("bottomAnchor")
-                        }
-                        .padding()
-                    }
-                    .onChange(of: gameMessages.count) { _, _ in
-                        withAnimation {
-                            proxy.scrollTo("bottomAnchor", anchor: .bottom)
-                        }
-                    }
-                    .onAppear {
-                        proxy.scrollTo("bottomAnchor", anchor: .bottom)
-                    }
-                }
+                messageListView
                 
                 Divider()
                 
-                // Message input
-                HStack {
-                    TextField("Message", text: $messageText)
-                        .textFieldStyle(.roundedBorder)
-                    
-                    Button {
-                        Task {
-                            await sendMessage()
-                        }
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.title2)
-                            .foregroundColor(.blue)
-                    }
-                    .disabled(messageText.isEmpty)
-                }
-                .padding()
+                emoteBarSection
+                
+                Divider()
+                
+                messageInputView
             }
             .navigationTitle("Game Chat")
             .navigationBarTitleDisplayMode(.inline)
@@ -96,6 +55,79 @@ struct GameChatView: View {
                 ChatNotificationManager.shared.activeGameChatRecordName = nil
             }
         }
+    }
+    
+    // MARK: - Subviews
+    
+    private var messageListView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(gameMessages, id: \.stableID) { message in
+                        chatBubble(for: message)
+                    }
+                    Color.clear
+                        .frame(height: 1)
+                        .id("bottomAnchor")
+                }
+                .padding()
+            }
+            .onChange(of: gameMessages.count) { _, _ in
+                withAnimation {
+                    proxy.scrollTo("bottomAnchor", anchor: .bottom)
+                }
+            }
+            .onAppear {
+                proxy.scrollTo("bottomAnchor", anchor: .bottom)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func chatBubble(for message: ChatMessage) -> some View {
+        if message.messageType == .system {
+            SystemMessageView(message: message)
+        } else if message.messageType == .reaction {
+            EmoteMessageView(
+                message: message,
+                isCurrentUser: message.senderRecordName == cloudKitService.currentUserRecordName
+            )
+        } else {
+            ChatMessageBubble(
+                message: message,
+                isCurrentUser: message.senderRecordName == cloudKitService.currentUserRecordName
+            )
+        }
+    }
+    
+    private var emoteBarSection: some View {
+        EmoteBarView(
+            onEmoteTap: { emote in
+                Task {
+                    await sendEmote(emote)
+                }
+            },
+            isUnlocked: cloudKitService.currentUserProfile?.hasEmotePack ?? false
+        )
+    }
+    
+    private var messageInputView: some View {
+        HStack {
+            TextField("Message", text: $messageText)
+                .textFieldStyle(.roundedBorder)
+            
+            Button {
+                Task {
+                    await sendMessage()
+                }
+            } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.blue)
+            }
+            .disabled(messageText.isEmpty)
+        }
+        .padding()
     }
     
     private func startPolling() {
@@ -178,6 +210,29 @@ struct GameChatView: View {
             }
         } catch {
             print("⚠️ Failed to fetch chat messages from CloudKit: \(error.localizedDescription)")
+        }
+    }
+    
+    private func sendEmote(_ emote: GameEmote) async {
+        guard let senderRecordName = cloudKitService.currentUserRecordName,
+              let username = cloudKitService.currentUserProfile?.username,
+              let gameRecordName = gameSession.cloudKitRecordName else {
+            return
+        }
+        
+        let message = ChatMessage(
+            senderRecordName: senderRecordName,
+            senderUsername: username,
+            content: emote.rawValue,
+            messageType: .reaction,
+            gameSession: gameSession
+        )
+        
+        do {
+            try await cloudKitService.sendChatMessage(message, gameRecordName: gameRecordName)
+            cloudKitMessages.append(message)
+        } catch {
+            print("Error sending emote: \(error)")
         }
     }
     

@@ -18,8 +18,19 @@ struct GameView: View {
     @State private var showingEndOverlay = false
     @State private var showingQuicketAnimation = false
     @State private var viewMode: ViewMode = .balanced
+    @State private var showingTimeFreezeIndicator = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    
+    private var cloudKitService: CloudKitService { CloudKitService.shared }
+    
+    private var userCellTheme: CellTheme {
+        cloudKitService.currentUserProfile?.activeCellTheme ?? .classic
+    }
+    
+    private var userBoardSkin: BoardSkin {
+        cloudKitService.currentUserProfile?.activeBoardSkin ?? .classic
+    }
     
     enum ViewMode {
         case gameboard  // Large gameboard, minimal controls
@@ -101,9 +112,28 @@ struct GameView: View {
                             currentPlayerColor: currentPlayerColor,
                             cellSelections: cellSelections,
                             colorMap: gameManager.playerColorMap,
-                            cellEffect: $gameManager.lastCellEffect
+                            cellEffect: $gameManager.lastCellEffect,
+                            cellTheme: userCellTheme,
+                            boardSkin: userBoardSkin
                         )
                         .frame(width: gridSize, height: gridSize)
+                        .overlay(alignment: .topTrailing) {
+                            // Time freeze indicator
+                            if gameManager.isTimeFrozen {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "snowflake")
+                                    Text("FROZEN")
+                                        .font(.caption2)
+                                        .bold()
+                                }
+                                .foregroundColor(.cyan)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(.ultraThinMaterial)
+                                .cornerRadius(8)
+                                .padding(8)
+                            }
+                        }
                         
                         Spacer()
                     }
@@ -171,6 +201,11 @@ struct GameView: View {
                     }
                     .padding(.horizontal)
                     
+                    // Boost buttons (multiplayer)
+                    if !gameManager.isOnlyPlayer {
+                        boostButtonsRow
+                    }
+                    
                     // Maximize gameboard button
                     Button {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
@@ -229,6 +264,11 @@ struct GameView: View {
                         }
                     }
                     .padding(.horizontal)
+                    
+                    // Boost buttons (multiplayer) in gameboard mode
+                    if !gameManager.isOnlyPlayer {
+                        boostButtonsRow
+                    }
                 }
                 .padding(.vertical, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -336,6 +376,66 @@ struct GameView: View {
                 gameManager.triggerSync()
             }
         }
+    }
+    
+    // MARK: - Boost Buttons
+    
+    private var boostButtonsRow: some View {
+        HStack(spacing: 12) {
+            // Hint Token
+            Button {
+                Task { await gameManager.useHintToken() }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "lightbulb.fill")
+                        .font(.caption)
+                    Text("Hint (\(cloudKitService.currentUserProfile?.hintTokens ?? 0))")
+                        .font(.caption)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(gameManager.canUseHintToken ? Color.yellow.opacity(0.3) : Color(.systemGray5))
+                .foregroundColor(gameManager.canUseHintToken ? .orange : .secondary)
+                .cornerRadius(8)
+            }
+            .disabled(!gameManager.canUseHintToken)
+            
+            // Time Freeze
+            Button {
+                Task { await gameManager.useTimeFreeze() }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "snowflake")
+                        .font(.caption)
+                    Text("Freeze (\(cloudKitService.currentUserProfile?.timeFreezes ?? 0))")
+                        .font(.caption)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(gameManager.canUseTimeFreeze ? Color.cyan.opacity(0.3) : Color(.systemGray5))
+                .foregroundColor(gameManager.canUseTimeFreeze ? .cyan : .secondary)
+                .cornerRadius(8)
+            }
+            .disabled(!gameManager.canUseTimeFreeze)
+            
+            Spacer()
+            
+            // Undo Shield indicator
+            if !gameManager.hasUsedUndoShield, (cloudKitService.currentUserProfile?.undoShields ?? 0) > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "shield.fill")
+                        .font(.caption)
+                    Text("Shield")
+                        .font(.caption)
+                }
+                .foregroundColor(.green)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.green.opacity(0.15))
+                .cornerRadius(8)
+            }
+        }
+        .padding(.horizontal)
     }
     
     /// Show the win/loss overlay, then quicket animation (multiplayer wins only).

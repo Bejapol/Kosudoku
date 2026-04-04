@@ -155,6 +155,8 @@ struct LeaderboardRowView: View {
     let isCurrentUser: Bool
     let playerColor: Color
     @State private var profileImageData: Data?
+    @State private var titleBadge: TitleBadge?
+    @State private var profileFrame: ProfileFrame?
     @State private var cloudKitService = CloudKitService.shared
     @State private var showingProfile = false
     
@@ -168,17 +170,30 @@ struct LeaderboardRowView: View {
             ProfilePhotoView(
                 imageData: profileImageData,
                 displayName: player.playerUsername,
-                size: 36
+                size: 36,
+                profileFrame: profileFrame
             )
             .onTapGesture { showingProfile = true }
             
             // Player info
             VStack(alignment: .leading, spacing: 4) {
-                Text(player.playerUsername)
-                    .font(.subheadline)
-                    .bold(isCurrentUser)
-                    .foregroundColor(isCurrentUser ? playerColor : .primary)
-                    .onTapGesture { showingProfile = true }
+                HStack(spacing: 4) {
+                    Text(player.playerUsername)
+                        .font(.subheadline)
+                        .bold(isCurrentUser)
+                        .foregroundColor(isCurrentUser ? playerColor : .primary)
+                    
+                    if let badge = titleBadge, badge != .none {
+                        Text(badge.displayName)
+                            .font(.system(size: 9))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.purple.opacity(0.15))
+                            .foregroundColor(.purple)
+                            .cornerRadius(3)
+                    }
+                }
+                .onTapGesture { showingProfile = true }
                 
                 HStack(spacing: 12) {
                     Label("\(player.correctGuesses)", systemImage: "checkmark.circle.fill")
@@ -228,21 +243,35 @@ struct LeaderboardRowView: View {
     
     // Cache profile photos to avoid refetching on every sync cycle
     private static var photoCache: [String: Data] = [:]
+    private static var badgeCache: [String: TitleBadge] = [:]
+    private static var frameCache: [String: ProfileFrame] = [:]
     
     // Fetch profile photo from CloudKit
     private func loadProfilePhoto() async {
         // Check cache first
         if let cached = Self.photoCache[player.playerRecordName] {
             if profileImageData == nil { profileImageData = cached }
+        }
+        if let cachedBadge = Self.badgeCache[player.playerRecordName] {
+            titleBadge = cachedBadge
+        }
+        if let cachedFrame = Self.frameCache[player.playerRecordName] {
+            profileFrame = cachedFrame
+        }
+        if Self.photoCache[player.playerRecordName] != nil {
             return
         }
         
         // If it's the current user, use their local profile
         if isCurrentUser, let currentProfile = cloudKitService.currentUserProfile {
             profileImageData = currentProfile.avatarImageData
+            titleBadge = currentProfile.activeTitleBadge
+            profileFrame = currentProfile.activeProfileFrame
             if let data = currentProfile.avatarImageData {
                 Self.photoCache[player.playerRecordName] = data
             }
+            Self.badgeCache[player.playerRecordName] = currentProfile.activeTitleBadge
+            Self.frameCache[player.playerRecordName] = currentProfile.activeProfileFrame
             return
         }
         
@@ -250,9 +279,13 @@ struct LeaderboardRowView: View {
         do {
             if let profile = try await cloudKitService.fetchUserProfileByOwner(ownerRecordName: player.playerRecordName) {
                 profileImageData = profile.avatarImageData
+                titleBadge = profile.activeTitleBadge
+                profileFrame = profile.activeProfileFrame
                 if let data = profile.avatarImageData {
                     Self.photoCache[player.playerRecordName] = data
                 }
+                Self.badgeCache[player.playerRecordName] = profile.activeTitleBadge
+                Self.frameCache[player.playerRecordName] = profile.activeProfileFrame
             }
         } catch {
             print("Failed to load profile photo for \(player.playerUsername): \(error)")

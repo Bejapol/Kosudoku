@@ -145,6 +145,35 @@ class StoreManager {
         }
     }
     
+    // MARK: - Quicket-Based Purchases
+    
+    /// Purchase any store item with quickets. Deducts cost, applies changes via closure,
+    /// saves to CloudKit, and reverts on failure.
+    func purchaseWithQuickets(cost: Int, apply: (UserProfile) -> Void) async -> Bool {
+        guard let profile = CloudKitService.shared.currentUserProfile else {
+            errorMessage = "No profile found."
+            return false
+        }
+        guard profile.quickets >= cost else {
+            errorMessage = "Not enough quickets."
+            return false
+        }
+        
+        let previousQuickets = profile.quickets
+        profile.quickets -= cost
+        apply(profile)
+        
+        do {
+            try await CloudKitService.shared.saveUserProfile(profile)
+            return true
+        } catch {
+            // Revert on failure
+            profile.quickets = previousQuickets
+            errorMessage = "Purchase failed: \(error.localizedDescription)"
+            return false
+        }
+    }
+    
     // MARK: - Private Helpers
     
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {

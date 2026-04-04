@@ -114,6 +114,29 @@ class CloudKitService {
             record["ownerRecordName"] = userRecordName
         }
         
+        // Store item fields
+        record["equippedCellTheme"] = profile.equippedCellTheme as CKRecordValue?
+        record["equippedBoardSkin"] = profile.equippedBoardSkin as CKRecordValue?
+        record["equippedVictoryAnimation"] = profile.equippedVictoryAnimation as CKRecordValue?
+        record["equippedProfileFrame"] = profile.equippedProfileFrame as CKRecordValue?
+        record["equippedTitleBadge"] = profile.equippedTitleBadge as CKRecordValue?
+        record["equippedGameInviteTheme"] = profile.equippedGameInviteTheme as CKRecordValue?
+        record["ownedCellThemes"] = profile.ownedCellThemes as CKRecordValue?
+        record["ownedBoardSkins"] = profile.ownedBoardSkins as CKRecordValue?
+        record["ownedVictoryAnimations"] = profile.ownedVictoryAnimations as CKRecordValue?
+        record["ownedProfileFrames"] = profile.ownedProfileFrames as CKRecordValue?
+        record["ownedTitleBadges"] = profile.ownedTitleBadges as CKRecordValue?
+        record["ownedGameInviteThemes"] = profile.ownedGameInviteThemes as CKRecordValue?
+        record["ownedPlayerColors"] = profile.ownedPlayerColors as CKRecordValue?
+        record["hintTokens"] = profile.hintTokens
+        record["timeFreezes"] = profile.timeFreezes
+        record["undoShields"] = profile.undoShields
+        record["streakSavers"] = profile.streakSavers
+        record["hasExtendedStats"] = profile.hasExtendedStats ? 1 : 0
+        record["hasEmotePack"] = profile.hasEmotePack ? 1 : 0
+        record["currentWinStreak"] = profile.currentWinStreak
+        record["bestWinStreak"] = profile.bestWinStreak
+        
         if let avatarData = profile.avatarImageData {
             // Save avatar as asset
             let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -151,6 +174,9 @@ class CloudKitService {
         profile.gamesWon = (record["gamesWon"] as? Int) ?? 0
         profile.quickets = (record["quickets"] as? Int) ?? 5
         profile.customColorRawValue = record["customColorRawValue"] as? Int
+        
+        // Store item fields
+        Self.readStoreFields(from: record, into: profile)
         
         // Load avatar image if available
         if let avatarAsset = record["avatar"] as? CKAsset,
@@ -193,6 +219,9 @@ class CloudKitService {
         profile.quickets = (record["quickets"] as? Int) ?? 5
         profile.customColorRawValue = record["customColorRawValue"] as? Int
         
+        // Store item fields
+        Self.readStoreFields(from: record, into: profile)
+        
         if let avatarAsset = record["avatar"] as? CKAsset,
            let avatarURL = avatarAsset.fileURL,
            let avatarData = try? Data(contentsOf: avatarURL) {
@@ -200,6 +229,31 @@ class CloudKitService {
         }
         
         return profile
+    }
+    
+    /// Read store-related fields from a CloudKit record into a UserProfile
+    private static func readStoreFields(from record: CKRecord, into profile: UserProfile) {
+        profile.equippedCellTheme = record["equippedCellTheme"] as? String
+        profile.equippedBoardSkin = record["equippedBoardSkin"] as? String
+        profile.equippedVictoryAnimation = record["equippedVictoryAnimation"] as? String
+        profile.equippedProfileFrame = record["equippedProfileFrame"] as? String
+        profile.equippedTitleBadge = record["equippedTitleBadge"] as? String
+        profile.equippedGameInviteTheme = record["equippedGameInviteTheme"] as? String
+        profile.ownedCellThemes = record["ownedCellThemes"] as? String
+        profile.ownedBoardSkins = record["ownedBoardSkins"] as? String
+        profile.ownedVictoryAnimations = record["ownedVictoryAnimations"] as? String
+        profile.ownedProfileFrames = record["ownedProfileFrames"] as? String
+        profile.ownedTitleBadges = record["ownedTitleBadges"] as? String
+        profile.ownedGameInviteThemes = record["ownedGameInviteThemes"] as? String
+        profile.ownedPlayerColors = record["ownedPlayerColors"] as? String
+        profile.hintTokens = (record["hintTokens"] as? Int) ?? 0
+        profile.timeFreezes = (record["timeFreezes"] as? Int) ?? 0
+        profile.undoShields = (record["undoShields"] as? Int) ?? 0
+        profile.streakSavers = (record["streakSavers"] as? Int) ?? 0
+        profile.hasExtendedStats = ((record["hasExtendedStats"] as? Int) ?? 0) != 0
+        profile.hasEmotePack = ((record["hasEmotePack"] as? Int) ?? 0) != 0
+        profile.currentWinStreak = (record["currentWinStreak"] as? Int) ?? 0
+        profile.bestWinStreak = (record["bestWinStreak"] as? Int) ?? 0
     }
     
     /// Search for users by username or display name
@@ -314,32 +368,40 @@ class CloudKitService {
     }
     
     /// Delete completed/abandoned game sessions (and their cascading PlayerGameState records)
-    /// that are older than the specified age
+    /// that are older than the specified age.
+    /// Completed games use `completedAt`; abandoned games fall back to `createdAt`.
     func cleanupOldGameRecords(olderThan maxAge: TimeInterval = 86400) async {
         let cutoffDate = Date().addingTimeInterval(-maxAge)
         
-        // Clean up completed games older than cutoff
-        for status in [GameStatus.completed, GameStatus.abandoned] {
-            let predicate = NSPredicate(format: "status == %@ AND createdAt < %@",
-                                        status.rawValue, cutoffDate as NSDate)
-            let query = CKQuery(recordType: RecordType.gameSession.rawValue, predicate: predicate)
-            
-            do {
-                let (matchResults, _) = try await publicDatabase.records(matching: query)
-                let recordIDs = matchResults.compactMap { _, result in
-                    try? result.get().recordID
-                }
-                
-                for recordID in recordIDs {
-                    _ = try? await publicDatabase.deleteRecord(withID: recordID)
-                }
-                
-                if !recordIDs.isEmpty {
-                    print("🧹 Cleaned up \(recordIDs.count) old \(status.rawValue) game records from CloudKit")
-                }
-            } catch {
-                print("⚠️ Failed to cleanup old \(status.rawValue) games: \(error.localizedDescription)")
+        // Clean up completed games based on completedAt
+        let completedPredicate = NSPredicate(format: "status == %@ AND completedAt < %@",
+                                              GameStatus.completed.rawValue, cutoffDate as NSDate)
+        await deleteGameRecords(matching: completedPredicate, label: GameStatus.completed.rawValue)
+        
+        // Clean up abandoned games based on createdAt (they have no completedAt)
+        let abandonedPredicate = NSPredicate(format: "status == %@ AND createdAt < %@",
+                                              GameStatus.abandoned.rawValue, cutoffDate as NSDate)
+        await deleteGameRecords(matching: abandonedPredicate, label: GameStatus.abandoned.rawValue)
+    }
+    
+    private func deleteGameRecords(matching predicate: NSPredicate, label: String) async {
+        let query = CKQuery(recordType: RecordType.gameSession.rawValue, predicate: predicate)
+        
+        do {
+            let (matchResults, _) = try await publicDatabase.records(matching: query)
+            let recordIDs = matchResults.compactMap { _, result in
+                try? result.get().recordID
             }
+            
+            for recordID in recordIDs {
+                _ = try? await publicDatabase.deleteRecord(withID: recordID)
+            }
+            
+            if !recordIDs.isEmpty {
+                print("🧹 Cleaned up \(recordIDs.count) old \(label) game records from CloudKit")
+            }
+        } catch {
+            print("⚠️ Failed to cleanup old \(label) games: \(error.localizedDescription)")
         }
     }
     

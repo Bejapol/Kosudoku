@@ -7,6 +7,19 @@
 
 import SwiftUI
 
+// MARK: - Board Skin Colors
+
+extension BoardSkin {
+    var backgroundColor: Color {
+        switch self {
+        case .classic: return Color(.systemBackground)
+        case .darkMode: return Color(red: 0.12, green: 0.12, blue: 0.14)
+        case .woodGrain: return Color(red: 0.82, green: 0.71, blue: 0.55)
+        case .chalkboard: return Color(red: 0.18, green: 0.32, blue: 0.22)
+        }
+    }
+}
+
 struct SudokuGridView: View {
     let board: SudokuBoard
     let selectedCell: (row: Int, col: Int)?
@@ -15,6 +28,8 @@ struct SudokuGridView: View {
     let cellSelections: [String: [PlayerColor]]  // "row-col" → colors of other players selecting that cell
     let colorMap: [String: PlayerColor]           // playerRecordName → assigned color
     @Binding var cellEffect: CellEffect?
+    var cellTheme: CellTheme = .classic
+    var boardSkin: BoardSkin = .classic
     
     var body: some View {
         GeometryReader { geometry in
@@ -22,10 +37,10 @@ struct SudokuGridView: View {
             
             ZStack {
                 // Background
-                Color(.systemBackground)
+                boardSkin.backgroundColor
                 
                 // Grid lines
-                GridLines(cellSize: cellSize)
+                GridLines(cellSize: cellSize, boardSkin: boardSkin)
                 
                 // Cells
                 ForEach(0..<9, id: \.self) { row in
@@ -46,7 +61,8 @@ struct SudokuGridView: View {
                             isInSameBox: isInSameBox(row: row, col: col, selectedRow: selectedCell?.row, selectedCol: selectedCell?.col),
                             currentPlayerColor: currentPlayerColor,
                             otherSelectingColors: otherSelectingColors,
-                            completedByColor: completedByColor
+                            completedByColor: completedByColor,
+                            cellTheme: cellTheme
                         )
                         .frame(width: cellSize, height: cellSize)
                         .contentShape(Rectangle())  // Makes entire cell area tappable
@@ -104,6 +120,25 @@ struct SudokuGridView: View {
 
 struct GridLines: View {
     let cellSize: CGFloat
+    var boardSkin: BoardSkin = .classic
+    
+    private var thinLineColor: Color {
+        switch boardSkin {
+        case .classic: return Color(.systemGray4)
+        case .darkMode: return Color.white.opacity(0.2)
+        case .woodGrain: return Color.brown.opacity(0.4)
+        case .chalkboard: return Color.white.opacity(0.25)
+        }
+    }
+    
+    private var thickLineColor: Color {
+        switch boardSkin {
+        case .classic: return Color(.label)
+        case .darkMode: return Color.white.opacity(0.8)
+        case .woodGrain: return Color.brown.opacity(0.8)
+        case .chalkboard: return Color.white.opacity(0.7)
+        }
+    }
     
     var body: some View {
         ZStack {
@@ -114,13 +149,13 @@ struct GridLines: View {
                     
                     // Vertical lines
                     Rectangle()
-                        .fill(Color(.systemGray4))
+                        .fill(thinLineColor)
                         .frame(width: 1)
                         .offset(x: offset - cellSize * 4.5)
                     
                     // Horizontal lines
                     Rectangle()
-                        .fill(Color(.systemGray4))
+                        .fill(thinLineColor)
                         .frame(height: 1)
                         .offset(y: offset - cellSize * 4.5)
                 }
@@ -132,13 +167,13 @@ struct GridLines: View {
                 
                 // Vertical lines
                 Rectangle()
-                    .fill(Color(.label))
+                    .fill(thickLineColor)
                     .frame(width: 3)
                     .offset(x: offset - cellSize * 4.5)
                 
                 // Horizontal lines
                 Rectangle()
-                    .fill(Color(.label))
+                    .fill(thickLineColor)
                     .frame(height: 3)
                     .offset(y: offset - cellSize * 4.5)
             }
@@ -155,11 +190,15 @@ struct SudokuCellView: View {
     let currentPlayerColor: Color
     let otherSelectingColors: [PlayerColor]
     let completedByColor: Color?
+    var cellTheme: CellTheme = .classic
     
     var body: some View {
         ZStack {
             // Background
             backgroundColor
+            
+            // Theme-specific cell fill overlay
+            cellThemeOverlay
             
             // Cell content
             if let value = cell.value {
@@ -167,9 +206,36 @@ struct SudokuCellView: View {
                     .font(.title)
                     .bold(cell.isFixed)
                     .foregroundColor(cell.isFixed ? .primary : (completedByColor ?? currentPlayerColor))
+                    .shadow(color: cellTheme == .neonGlow ? (completedByColor ?? currentPlayerColor).opacity(0.6) : .clear, radius: 4)
             } else if !cell.notes.isEmpty {
                 // Show notes
                 NotesView(notes: cell.notes)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var cellThemeOverlay: some View {
+        switch cellTheme {
+        case .classic:
+            EmptyView()
+        case .neonGlow:
+            if cell.value != nil && !cell.isFixed {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill((completedByColor ?? currentPlayerColor).opacity(0.1))
+            }
+        case .pastel:
+            if cell.value != nil && !cell.isFixed {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill((completedByColor ?? currentPlayerColor).opacity(0.08))
+            }
+        case .gradient:
+            if cell.value != nil && !cell.isFixed {
+                LinearGradient(
+                    colors: [(completedByColor ?? currentPlayerColor).opacity(0.15), .clear],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
             }
         }
     }
@@ -389,7 +455,9 @@ struct NotesView: View {
         currentPlayerColor: PlayerColor.coral.color,
         cellSelections: [:],
         colorMap: [:],
-        cellEffect: .constant(nil)
+        cellEffect: .constant(nil),
+        cellTheme: .classic,
+        boardSkin: .classic
     )
     .frame(width: 350, height: 350)
     .padding()

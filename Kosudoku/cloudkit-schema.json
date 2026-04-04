@@ -42,6 +42,90 @@
         {
           "name": "customColorRawValue",
           "type": "INT64"
+        },
+        {
+          "name": "equippedCellTheme",
+          "type": "STRING"
+        },
+        {
+          "name": "equippedBoardSkin",
+          "type": "STRING"
+        },
+        {
+          "name": "equippedVictoryAnimation",
+          "type": "STRING"
+        },
+        {
+          "name": "equippedProfileFrame",
+          "type": "STRING"
+        },
+        {
+          "name": "equippedTitleBadge",
+          "type": "STRING"
+        },
+        {
+          "name": "equippedGameInviteTheme",
+          "type": "STRING"
+        },
+        {
+          "name": "ownedCellThemes",
+          "type": "STRING"
+        },
+        {
+          "name": "ownedBoardSkins",
+          "type": "STRING"
+        },
+        {
+          "name": "ownedVictoryAnimations",
+          "type": "STRING"
+        },
+        {
+          "name": "ownedProfileFrames",
+          "type": "STRING"
+        },
+        {
+          "name": "ownedTitleBadges",
+          "type": "STRING"
+        },
+        {
+          "name": "ownedGameInviteThemes",
+          "type": "STRING"
+        },
+        {
+          "name": "ownedPlayerColors",
+          "type": "STRING"
+        },
+        {
+          "name": "hintTokens",
+          "type": "INT64"
+        },
+        {
+          "name": "timeFreezes",
+          "type": "INT64"
+        },
+        {
+          "name": "undoShields",
+          "type": "INT64"
+        },
+        {
+          "name": "streakSavers",
+          "type": "INT64"
+        },
+        {
+          "name": "hasExtendedStats",
+          "type": "INT64"
+        },
+        {
+          "name": "hasEmotePack",
+          "type": "INT64"
+        },
+        {
+          "name": "currentWinStreak",
+          "type": "INT64"
+        },
+        {
+          "name": "bestWinStreak",
+          "type": "INT64"
         }
       ],
       "indexes": [

@@ -13,6 +13,7 @@
 		AC9B3A0C2F7B828B008E2C44 /* ViewsStoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A0B2F7B828B008E2C44 /* ViewsStoreView.swift */; };
 		AC9B3A112F7CF23F008E2C44 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AC9B3A102F7CF23E008E2C44 /* StoreKit.framework */; };
 		AC9B3A132F7CF324008E2C44 /* Products.storekit in Resources */ = {isa = PBXBuildFile; fileRef = AC9B3A122F7CF324008E2C44 /* Products.storekit */; };
+		AC9B3A1A2F7FBADE008E2C44 /* ViewsExtendedStatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A192F7FBADE008E2C44 /* ViewsExtendedStatsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -43,6 +44,7 @@
 		AC9B3A102F7CF23E008E2C44 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		AC9B3A122F7CF324008E2C44 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
 		AC9B3A142F7D7D9D008E2C44 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
+		AC9B3A192F7FBADE008E2C44 /* ViewsExtendedStatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewsExtendedStatsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -116,6 +118,7 @@
 				AC9B3A092F73C718008E2C44 /* ViewsGameLobbyView.swift */,
 				AC9B3A0B2F7B828B008E2C44 /* ViewsStoreView.swift */,
 				AC9B3A0F2F7CF23E008E2C44 /* Frameworks */,
+				AC9B3A192F7FBADE008E2C44 /* ViewsExtendedStatsView.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -284,6 +287,7 @@
 			files = (
 				AC9B3A042F726A28008E2C44 /* ServicesChatNotificationManager.swift in Sources */,
 				AC9B3A062F726AE1008E2C44 /* ViewsChatBannerView.swift in Sources */,
+				AC9B3A1A2F7FBADE008E2C44 /* ViewsExtendedStatsView.swift in Sources */,
 				AC9B3A0C2F7B828B008E2C44 /* ViewsStoreView.swift in Sources */,
 				AC9B3A0A2F73C718008E2C44 /* ViewsGameLobbyView.swift in Sources */,
 			);

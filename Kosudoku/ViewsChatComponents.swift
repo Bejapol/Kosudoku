@@ -103,3 +103,39 @@ struct ChatMessageBubble: View {
         }
     }
 }
+
+/// Renders a .reaction chat message as a large centered emoji bubble
+struct EmoteMessageView: View {
+    let message: ChatMessage
+    let isCurrentUser: Bool
+    
+    private var emote: GameEmote? {
+        GameEmote(rawValue: message.content)
+    }
+    
+    var body: some View {
+        HStack {
+            if isCurrentUser { Spacer() }
+            
+            VStack(spacing: 4) {
+                if !isCurrentUser {
+                    Text(message.senderUsername)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Text(emote?.emoji ?? message.content)
+                    .font(.system(size: 44))
+                    .padding(8)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(16)
+                
+                Text(message.timestamp, style: .time)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            
+            if !isCurrentUser { Spacer() }
+        }
+    }
+}

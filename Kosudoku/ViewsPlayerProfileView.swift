@@ -29,12 +29,25 @@ struct PlayerProfileView: View {
                                     ProfilePhotoView(
                                         imageData: profile.avatarImageData,
                                         displayName: profile.displayName,
-                                        size: 80
+                                        size: 80,
+                                        profileFrame: profile.activeProfileFrame
                                     )
                                     
-                                    Text(profile.displayName)
-                                        .font(.title2)
-                                        .bold()
+                                    HStack(spacing: 6) {
+                                        Text(profile.displayName)
+                                            .font(.title2)
+                                            .bold()
+                                        
+                                        if profile.activeTitleBadge != .none {
+                                            Text(profile.activeTitleBadge.displayName)
+                                                .font(.caption)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(Color.purple.opacity(0.15))
+                                                .foregroundColor(.purple)
+                                                .cornerRadius(4)
+                                        }
+                                    }
                                     
                                     Text("@\(profile.username)")
                                         .font(.subheadline)
@@ -87,6 +100,21 @@ struct PlayerProfileView: View {
                                     Text("N/A")
                                         .foregroundColor(.secondary)
                                 }
+                            }
+                            
+                            HStack {
+                                Label("Win Streak", systemImage: "flame.fill")
+                                    .foregroundColor(.orange)
+                                Spacer()
+                                Text("\(profile.currentWinStreak)")
+                                    .bold()
+                            }
+                            
+                            HStack {
+                                Text("Best Streak")
+                                Spacer()
+                                Text("\(profile.bestWinStreak)")
+                                    .bold()
                             }
                         }
                     }

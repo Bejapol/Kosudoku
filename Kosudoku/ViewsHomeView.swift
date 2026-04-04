@@ -500,11 +500,23 @@ struct GameInvitationCard: View {
     let onAccept: () -> Void
     let onDecline: () -> Void
     
+    @State private var hostInviteTheme: GameInviteTheme = .classic
+    @State private var cloudKitService = CloudKitService.shared
+    
+    private var themeColors: (primary: Color, secondary: Color) {
+        switch hostInviteTheme {
+        case .classic: return (.orange, .orange)
+        case .royal: return (.purple, .indigo)
+        case .neon: return (.green, .cyan)
+        case .tropical: return (Color(red: 1.0, green: 0.6, blue: 0.0), Color(red: 1.0, green: 0.3, blue: 0.4))
+        }
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Image(systemName: "envelope.fill")
-                    .foregroundColor(.orange)
+                Image(systemName: hostInviteTheme.icon)
+                    .foregroundColor(themeColors.primary)
                 Text(session.difficulty.rawValue.capitalized)
                     .font(.headline)
                 Spacer()
@@ -512,8 +524,8 @@ struct GameInvitationCard: View {
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color.orange.opacity(0.2))
-                    .foregroundColor(.orange)
+                    .background(themeColors.primary.opacity(0.2))
+                    .foregroundColor(themeColors.primary)
                     .cornerRadius(4)
             }
             
@@ -557,17 +569,30 @@ struct GameInvitationCard: View {
         .padding()
         .background(
             LinearGradient(
-                colors: [Color.orange.opacity(0.1), Color.orange.opacity(0.05)],
+                colors: [themeColors.primary.opacity(0.1), themeColors.secondary.opacity(0.05)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                .stroke(themeColors.primary.opacity(0.3), lineWidth: 1)
         )
         .cornerRadius(12)
         .padding(.horizontal)
+        .task {
+            await loadHostTheme()
+        }
+    }
+    
+    private func loadHostTheme() async {
+        do {
+            if let hostProfile = try await cloudKitService.fetchUserProfileByOwner(ownerRecordName: session.hostRecordName) {
+                hostInviteTheme = hostProfile.activeGameInviteTheme
+            }
+        } catch {
+            // Fall back to classic theme
+        }
     }
 }
 
