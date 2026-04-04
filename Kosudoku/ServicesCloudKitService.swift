@@ -779,6 +779,49 @@ class CloudKitService {
         try await publicDatabase.deleteRecord(withID: recordID)
     }
     
+    // MARK: - User Discovery
+    
+    // Note: CloudKit user discovery APIs (CKDiscoverAllUserIdentitiesOperation,
+    // requestApplicationPermission(.userDiscoverability)) were deprecated in iOS 17 with no
+    // direct replacement. Apple's recommended alternative (CKShare-based sharing) is a different
+    // paradigm that doesn't support automatic contact-based user discovery. These APIs still
+    // function and are the only way to discover which contacts use the app. The deprecation
+    // warnings are intentional and expected.
+    
+    /// Request discoverability permission so other users' contacts can find this user
+    func requestDiscoverability() async {
+        do {
+            let status = try await container.requestApplicationPermission(.userDiscoverability)
+            print("Discoverability status: \(status.rawValue)")
+        } catch {
+            print("Failed to request discoverability: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Discover contacts who also use the app via CloudKit user discovery
+    func discoverContactsUsingApp() async throws -> [CKUserIdentity] {
+        return try await withCheckedThrowingContinuation { continuation in
+            let operation = CKDiscoverAllUserIdentitiesOperation()
+            var identities: [CKUserIdentity] = []
+            
+            operation.userIdentityDiscoveredBlock = { identity in
+                identities.append(identity)
+            }
+            
+            operation.discoverAllUserIdentitiesResultBlock = { result in
+                switch result {
+                case .success:
+                    continuation.resume(returning: identities)
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+            
+            operation.qualityOfService = .userInitiated
+            container.add(operation)
+        }
+    }
+    
     /// Subscribe to incoming friend requests for the current user
     func subscribeToFriendRequests() async {
         guard let currentUser = currentUserRecordName else { return }

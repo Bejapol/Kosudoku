@@ -7,5 +7,7 @@
 		<string>remote-notification</string>
 		<string>fetch</string>
 	</array>
+	<key>NSContactsUsageDescription</key>
+	<string>Kosudoku uses your contacts to help you find friends who play the game and invite others to join.</string>
 </dict>
 </plist>

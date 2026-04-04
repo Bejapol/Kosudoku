@@ -197,6 +197,9 @@ struct ProfileSetupView: View {
             cloudKitService.isSignedOut = false
             cloudKitService.isAuthenticated = true
             
+            // Request discoverability so contacts can find this user
+            await cloudKitService.requestDiscoverability()
+            
             isCreating = false
             dismiss()
         } catch {

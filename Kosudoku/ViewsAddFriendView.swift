@@ -64,6 +64,19 @@ struct AddFriendView: View {
                     }
                 }
             }
+            .safeAreaInset(edge: .bottom) {
+                NavigationLink {
+                    ContactsInviteView(friendships: [])
+                } label: {
+                    Label("Find from Contacts", systemImage: "person.crop.rectangle.stack")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            }
         }
     }
     

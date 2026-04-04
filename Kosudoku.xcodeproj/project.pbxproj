@@ -18,6 +18,7 @@
 		AC9B3A1E2F81576A008E2C44 /* ServicesEngagementManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A1D2F81576A008E2C44 /* ServicesEngagementManager.swift */; };
 		AC9B3A202F81582E008E2C44 /* ViewsDailyChallengesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A1F2F81582E008E2C44 /* ViewsDailyChallengesView.swift */; };
 		AC9B3A222F81587C008E2C44 /* ViewsAchievementsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A212F81587C008E2C44 /* ViewsAchievementsView.swift */; };
+		AC9B3A242F817741008E2C44 /* ViewsContactsInviteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B3A232F817741008E2C44 /* ViewsContactsInviteView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -53,6 +54,7 @@
 		AC9B3A1D2F81576A008E2C44 /* ServicesEngagementManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicesEngagementManager.swift; sourceTree = "<group>"; };
 		AC9B3A1F2F81582E008E2C44 /* ViewsDailyChallengesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewsDailyChallengesView.swift; sourceTree = "<group>"; };
 		AC9B3A212F81587C008E2C44 /* ViewsAchievementsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewsAchievementsView.swift; sourceTree = "<group>"; };
+		AC9B3A232F817741008E2C44 /* ViewsContactsInviteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewsContactsInviteView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -131,6 +133,7 @@
 				AC9B3A1D2F81576A008E2C44 /* ServicesEngagementManager.swift */,
 				AC9B3A1F2F81582E008E2C44 /* ViewsDailyChallengesView.swift */,
 				AC9B3A212F81587C008E2C44 /* ViewsAchievementsView.swift */,
+				AC9B3A232F817741008E2C44 /* ViewsContactsInviteView.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -300,6 +303,7 @@
 				AC9B3A042F726A28008E2C44 /* ServicesChatNotificationManager.swift in Sources */,
 				AC9B3A1C2F815689008E2C44 /* ModelsEngagement.swift in Sources */,
 				AC9B3A062F726AE1008E2C44 /* ViewsChatBannerView.swift in Sources */,
+				AC9B3A242F817741008E2C44 /* ViewsContactsInviteView.swift in Sources */,
 				AC9B3A1E2F81576A008E2C44 /* ServicesEngagementManager.swift in Sources */,
 				AC9B3A1A2F7FBADE008E2C44 /* ViewsExtendedStatsView.swift in Sources */,
 				AC9B3A0C2F7B828B008E2C44 /* ViewsStoreView.swift in Sources */,

@@ -21,6 +21,14 @@ struct FriendsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    NavigationLink {
+                        ContactsInviteView(friendships: friendships)
+                    } label: {
+                        Label("Find Friends from Contacts", systemImage: "person.crop.rectangle.stack")
+                    }
+                }
+                
                 Section("Friends") {
                     if acceptedFriends.isEmpty {
                         Text("No friends yet")
