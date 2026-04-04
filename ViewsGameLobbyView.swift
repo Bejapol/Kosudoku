@@ -355,6 +355,7 @@ struct LobbyPlayerRow: View {
     let playerColor: Color?
     
     @State private var profileImageData: Data?
+    @State private var rankTier: RankTier?
     @State private var cloudKitService = CloudKitService.shared
     
     /// The accent color: use the player's game color if available, otherwise fall back to status-based color
@@ -391,6 +392,10 @@ struct LobbyPlayerRow: View {
                             .background(accentColor.opacity(0.2))
                             .foregroundColor(accentColor)
                             .cornerRadius(4)
+                    }
+                    
+                    if let tier = rankTier {
+                        RankTierBadge(tier: tier, showLabel: false, size: 12)
                     }
                 }
                 
@@ -447,10 +452,16 @@ struct LobbyPlayerRow: View {
     // MARK: - Photo Loading
     
     private static var photoCache: [String: Data] = [:]
+    private static var rankCache: [String: RankTier] = [:]
     
     private func loadProfilePhoto() async {
         if let cached = Self.photoCache[ownerRecordName] {
             if profileImageData == nil { profileImageData = cached }
+        }
+        if let cachedRank = Self.rankCache[ownerRecordName] {
+            rankTier = cachedRank
+        }
+        if Self.photoCache[ownerRecordName] != nil {
             return
         }
         
@@ -458,9 +469,11 @@ struct LobbyPlayerRow: View {
         if ownerRecordName == cloudKitService.currentUserRecordName,
            let currentProfile = cloudKitService.currentUserProfile {
             profileImageData = currentProfile.avatarImageData
+            rankTier = currentProfile.rankTier
             if let data = currentProfile.avatarImageData {
                 Self.photoCache[ownerRecordName] = data
             }
+            Self.rankCache[ownerRecordName] = currentProfile.rankTier
             return
         }
         
@@ -468,9 +481,11 @@ struct LobbyPlayerRow: View {
         do {
             if let profile = try await cloudKitService.fetchUserProfileByOwner(ownerRecordName: ownerRecordName) {
                 profileImageData = profile.avatarImageData
+                rankTier = profile.rankTier
                 if let data = profile.avatarImageData {
                     Self.photoCache[ownerRecordName] = data
                 }
+                Self.rankCache[ownerRecordName] = profile.rankTier
             }
         } catch {
             print("Failed to load profile photo for \(name): \(error)")

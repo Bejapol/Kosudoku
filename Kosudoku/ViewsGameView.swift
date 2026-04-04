@@ -17,12 +17,17 @@ struct GameView: View {
     @State private var showingCancelAlert = false
     @State private var showingEndOverlay = false
     @State private var showingQuicketAnimation = false
+    @State private var showingLevelUp = false
+    @State private var showingAchievement = false
+    @State private var levelUpNumber: Int?
+    @State private var achievementToShow: Achievement?
     @State private var viewMode: ViewMode = .balanced
     @State private var showingTimeFreezeIndicator = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     
     private var cloudKitService: CloudKitService { CloudKitService.shared }
+    private var engagementManager: EngagementManager { EngagementManager.shared }
     
     private var userCellTheme: CellTheme {
         cloudKitService.currentUserProfile?.activeCellTheme ?? .classic
@@ -285,6 +290,16 @@ struct GameView: View {
                     .transition(.opacity)
                     .allowsHitTesting(false)
             }
+            if showingLevelUp, let level = levelUpNumber {
+                LevelUpOverlay(level: level)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
+            if showingAchievement, let achievement = achievementToShow {
+                AchievementUnlockOverlay(achievement: achievement)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -370,6 +385,16 @@ struct GameView: View {
                 gameManager.triggerSync()
             }
         }
+        .onChange(of: engagementManager.recentLevelUp) { _, newLevel in
+            if let level = newLevel {
+                showLevelUpOverlay(level: level)
+            }
+        }
+        .onChange(of: engagementManager.recentAchievements) { _, achievements in
+            if let first = achievements.first {
+                showAchievementOverlay(achievement: first)
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             // Sync immediately when returning from background
             if newPhase == .active && !isViewingCompleted {
@@ -436,6 +461,34 @@ struct GameView: View {
             }
         }
         .padding(.horizontal)
+    }
+    
+    private func showLevelUpOverlay(level: Int) {
+        levelUpNumber = level
+        withAnimation(.easeIn(duration: 0.3)) {
+            showingLevelUp = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                showingLevelUp = false
+            }
+            levelUpNumber = nil
+            engagementManager.recentLevelUp = nil
+        }
+    }
+    
+    private func showAchievementOverlay(achievement: Achievement) {
+        achievementToShow = achievement
+        withAnimation(.easeIn(duration: 0.3)) {
+            showingAchievement = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                showingAchievement = false
+            }
+            achievementToShow = nil
+            engagementManager.recentAchievements.removeAll()
+        }
     }
     
     /// Show the win/loss overlay, then quicket animation (multiplayer wins only).
@@ -684,21 +737,18 @@ struct ScoreBreakdownView: View {
     }
     
     private var speedBonus: Int {
-        ScoringSystem.speedBonus(cellsCompleted: player.cellsCompleted.count, timeElapsed: timeElapsed)
+        max(0, player.score - (correctTotal - incorrectTotal))
     }
     
     private var speedLabel: String {
-        let avg = timeElapsed / Double(max(player.cellsCompleted.count, 1))
-        if avg < 10 {
-            return "Fast (<10s/cell)"
-        } else if avg < 20 {
-            return "Medium (<20s/cell)"
+        if speedBonus > 0 {
+            return "Applied at end of game"
         }
-        return "No speed bonus"
+        return "Calculated at end of game"
     }
     
     private var computedTotal: Int {
-        max(0, correctTotal - incorrectTotal + speedBonus)
+        player.score
     }
     
     var body: some View {
@@ -1045,6 +1095,142 @@ struct QuicketFloatOverlay: View {
             withAnimation(.easeIn(duration: 0.6).delay(1.8)) {
                 opacity = 0
                 scale = 1.15
+            }
+        }
+    }
+}
+
+// MARK: - Level Up Overlay
+
+struct LevelUpOverlay: View {
+    let level: Int
+    
+    @State private var scale: CGFloat = 0.1
+    @State private var rotation: Double = -15
+    @State private var opacity: Double = 0
+    
+    private let levelColors: [Color] = [.cyan, .blue, .purple]
+    
+    private var milestoneReward: LevelMilestone? {
+        LevelMilestone.milestones.first { $0.level == level }
+    }
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(opacity * 0.4)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 12) {
+                Text("LEVEL UP!")
+                    .font(.system(size: 48, weight: .black, design: .rounded))
+                    .italic()
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: levelColors,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .shadow(color: .blue.opacity(0.8), radius: 0, x: 3, y: 3)
+                    .shadow(color: .black.opacity(0.5), radius: 8, x: 0, y: 4)
+                
+                Text("Level \(level)")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                
+                if let milestone = milestoneReward {
+                    VStack(spacing: 4) {
+                        Text("Unlocked:")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
+                        Text(milestone.rewardDescription)
+                            .font(.headline)
+                            .foregroundColor(.yellow)
+                    }
+                    .padding(.top, 4)
+                }
+            }
+            .scaleEffect(scale)
+            .rotationEffect(.degrees(rotation))
+            .opacity(opacity)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.5, blendDuration: 0)) {
+                scale = 1.0
+                rotation = -3
+                opacity = 1.0
+            }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6).delay(0.5)) {
+                rotation = 2
+            }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7).delay(0.8)) {
+                rotation = 0
+            }
+            withAnimation(.easeIn(duration: 0.6).delay(2.2)) {
+                opacity = 0
+                scale = 1.15
+            }
+        }
+    }
+}
+
+// MARK: - Achievement Unlock Overlay
+
+struct AchievementUnlockOverlay: View {
+    let achievement: Achievement
+    
+    @State private var scale: CGFloat = 0.1
+    @State private var opacity: Double = 0
+    @State private var iconScale: CGFloat = 0.1
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(opacity * 0.4)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 16) {
+                Image(systemName: achievement.icon)
+                    .font(.system(size: 60))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.yellow, .orange],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .shadow(color: .orange.opacity(0.6), radius: 10)
+                    .scaleEffect(iconScale)
+                
+                Text("ACHIEVEMENT")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .tracking(4)
+                    .foregroundColor(.yellow.opacity(0.8))
+                
+                Text(achievement.displayName)
+                    .font(.system(size: 28, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                
+                Text(achievement.description)
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+            }
+            .padding(32)
+            .scaleEffect(scale)
+            .opacity(opacity)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.5, blendDuration: 0)) {
+                scale = 1.0
+                opacity = 1.0
+            }
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.4).delay(0.2)) {
+                iconScale = 1.0
+            }
+            withAnimation(.easeIn(duration: 0.6).delay(2.2)) {
+                opacity = 0
+                scale = 1.1
             }
         }
     }

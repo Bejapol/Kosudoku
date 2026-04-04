@@ -65,6 +65,62 @@ struct ProfileView: View {
                         }
                     }
                     
+                    // Level & Rank Section
+                    Section("Level & Rank") {
+                        // Level with XP progress bar
+                        VStack(alignment: .leading, spacing: 6) {
+                            let progress = xpProgressInCurrentLevel(profile.totalXP)
+                            HStack {
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .foregroundColor(.blue)
+                                Text("Level \(profile.playerLevel)")
+                                    .font(.headline)
+                                Spacer()
+                                Text("\(profile.totalXP) XP total")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            ProgressView(value: Double(progress.current), total: Double(max(progress.needed, 1)))
+                                .tint(.blue)
+                            
+                            Text("\(progress.current) / \(progress.needed) XP to next level")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                        
+                        // Rank tier
+                        HStack {
+                            let tier = profile.rankTier
+                            Image(systemName: tier.icon)
+                                .foregroundColor(tier.color)
+                            Text(tier.displayName)
+                                .font(.headline)
+                            Spacer()
+                            Text("\(profile.rankPoints) RP")
+                                .bold()
+                                .foregroundColor(tier.color)
+                        }
+                        
+                        // Login streak
+                        HStack {
+                            Image(systemName: "flame.fill")
+                                .foregroundColor(.orange)
+                            Text("Login Streak")
+                            Spacer()
+                            Text("\(profile.loginStreak) days")
+                                .bold()
+                        }
+                        
+                        // Achievements link
+                        NavigationLink {
+                            AchievementsView(profile: profile)
+                        } label: {
+                            Label("Achievements", systemImage: "trophy.fill")
+                        }
+                    }
+                    
                     Section("Statistics") {
                         HStack {
                             Label("Quickets", systemImage: "ticket.fill")
@@ -121,6 +177,20 @@ struct ProfileView: View {
                             Text("Best Streak")
                             Spacer()
                             Text("\(profile.bestWinStreak)")
+                                .bold()
+                        }
+                        
+                        HStack {
+                            Text("Total XP")
+                            Spacer()
+                            Text("\(profile.totalXP)")
+                                .bold()
+                        }
+                        
+                        HStack {
+                            Text("Rank Points")
+                            Spacer()
+                            Text("\(profile.rankPoints)")
                                 .bold()
                         }
                         

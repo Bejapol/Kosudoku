@@ -76,4 +76,19 @@ struct ScoringSystem {
         
         return max(0, correctPoints - incorrectPoints + speedPoints)
     }
+    
+    // MARK: - XP Calculations
+    
+    /// XP earned per correct cell placement
+    static func xpForCorrectCell() -> Int {
+        return 2
+    }
+    
+    /// XP earned for completing a game
+    static func xpForGameCompletion(isWin: Bool, isMultiplayer: Bool) -> Int {
+        if isMultiplayer {
+            return isWin ? 40 : 10
+        }
+        return isWin ? 20 : 5
+    }
 }

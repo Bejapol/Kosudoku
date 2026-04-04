@@ -16,6 +16,7 @@ extension BoardSkin {
         case .darkMode: return Color(red: 0.12, green: 0.12, blue: 0.14)
         case .woodGrain: return Color(red: 0.82, green: 0.71, blue: 0.55)
         case .chalkboard: return Color(red: 0.18, green: 0.32, blue: 0.22)
+        case .slate: return Color(red: 0.28, green: 0.30, blue: 0.34)
         }
     }
 }
@@ -128,6 +129,7 @@ struct GridLines: View {
         case .darkMode: return Color.white.opacity(0.2)
         case .woodGrain: return Color.brown.opacity(0.4)
         case .chalkboard: return Color.white.opacity(0.25)
+        case .slate: return Color.white.opacity(0.15)
         }
     }
     
@@ -137,6 +139,7 @@ struct GridLines: View {
         case .darkMode: return Color.white.opacity(0.8)
         case .woodGrain: return Color.brown.opacity(0.8)
         case .chalkboard: return Color.white.opacity(0.7)
+        case .slate: return Color.white.opacity(0.6)
         }
     }
     
@@ -236,6 +239,11 @@ struct SudokuCellView: View {
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
+            }
+        case .emerald:
+            if cell.value != nil && !cell.isFixed {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.green.opacity(0.1))
             }
         }
     }

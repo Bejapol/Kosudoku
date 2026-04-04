@@ -15,6 +15,10 @@ extension ProfileFrame {
         case .gold: return [Color.yellow, Color.orange, Color.yellow]
         case .diamond: return [Color.cyan, Color.white, Color.cyan]
         case .fire: return [Color.red, Color.orange, Color.yellow]
+        case .bronzeGlow: return [Color(red: 0.8, green: 0.5, blue: 0.2), Color(red: 0.9, green: 0.7, blue: 0.3), Color(red: 0.8, green: 0.5, blue: 0.2)]
+        case .silverShine: return [Color(red: 0.75, green: 0.75, blue: 0.8), Color.white, Color(red: 0.75, green: 0.75, blue: 0.8)]
+        case .goldenAura: return [Color.yellow, Color.white, Color.yellow, Color.orange]
+        case .rainbow: return [Color.red, Color.orange, Color.yellow, Color.green, Color.blue, Color.purple]
         }
     }
 }

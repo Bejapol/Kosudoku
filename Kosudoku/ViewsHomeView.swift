@@ -107,6 +107,11 @@ struct HomeView: View {
                         .opacity((cloudKitService.isAuthenticated && cloudKitService.currentUserProfile != nil) ? 1.0 : 0.5)
                     }
                     
+                    // Daily Engagement Section
+                    if let profile = cloudKitService.currentUserProfile {
+                        DailyChallengesView(profile: profile)
+                    }
+                    
                     Divider()
                         .padding(.horizontal)
                     
@@ -262,6 +267,15 @@ struct HomeView: View {
         }
         .task {
             await syncInvitedGames()
+            // Initialize daily engagement
+            if let profile = cloudKitService.currentUserProfile {
+                let engagement = EngagementManager.shared
+                engagement.checkDailyLogin(profile: profile)
+                engagement.generateDailyChallenges(profile: profile)
+                engagement.generateWeeklyChallenge(profile: profile)
+                // Save updated profile to CloudKit
+                try? await cloudKitService.saveUserProfile(profile)
+            }
         }
         .refreshable {
             await syncInvitedGames()

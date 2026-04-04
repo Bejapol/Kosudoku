@@ -85,6 +85,7 @@ class GameManager {
     private var freezeTimer: Timer?
     
     private let cloudKit = CloudKitService.shared
+    private let engagementManager = EngagementManager.shared
     private let modelContext: ModelContext
     
     // Timer for periodic sync
@@ -562,6 +563,12 @@ class GameManager {
             // Update puzzle data in game session
             game.puzzleData = board.toJSONString()
             
+            // Award XP for correct cell
+            if let profile = cloudKit.currentUserProfile {
+                engagementManager.awardXP(ScoringSystem.xpForCorrectCell(), profile: profile, isFirstGameOfDay: false)
+                engagementManager.updateChallengeProgress(event: .cellCompleted, profile: profile)
+            }
+            
             // Play correct chime and trigger visual effect
             GameSoundManager.shared.playCorrectSound()
             let effectColor = playerColorMap[playerState.playerRecordName]?.color ?? PlayerColor.coral.color
@@ -917,6 +924,35 @@ class GameManager {
                 } else {
                     profile.currentWinStreak = 0
                 }
+            }
+            
+            // Engagement: award game completion XP
+            let isFirstGameToday = profile.isFirstGameToday
+            let completionXP = ScoringSystem.xpForGameCompletion(isWin: isWinner, isMultiplayer: !isSoloGame)
+            engagementManager.awardXP(completionXP, profile: profile, isFirstGameOfDay: isFirstGameToday)
+            
+            // Engagement: award/deduct RP for ranked multiplayer
+            if !isSoloGame {
+                let opponentAvgRP = othersOnly.isEmpty ? 0 : othersOnly.reduce(0) { sum, _ in sum } // Use 0 as baseline for opponents without RP data
+                engagementManager.awardRP(isWin: isWinner, opponentAvgRP: opponentAvgRP, profile: profile)
+            }
+            
+            // Mark first game of day
+            profile.lastGameCompletedDate = Date()
+            
+            // Track challenge progress
+            let usedHint = hasUsedHintToken
+            engagementManager.updateChallengeProgress(event: .gamePlayed, profile: profile)
+            engagementManager.updateChallengeProgress(
+                event: .gameWon(difficulty: game.difficulty, usedHint: usedHint, isMultiplayer: !isSoloGame),
+                profile: profile
+            )
+            engagementManager.updateChallengeProgress(event: .scoreEarned(playerState.score), profile: profile)
+            
+            // Check expert solver achievement
+            if isWinner && game.difficulty == .expert && !profile.hasAchievement(.expertSolver) {
+                profile.unlockAchievement(.expertSolver)
+                engagementManager.recentAchievements.append(.expertSolver)
             }
         }
         

@@ -137,6 +137,20 @@ class CloudKitService {
         record["currentWinStreak"] = profile.currentWinStreak
         record["bestWinStreak"] = profile.bestWinStreak
         
+        // Engagement fields
+        record["totalXP"] = profile.totalXP
+        record["playerLevel"] = profile.playerLevel
+        record["rankPoints"] = profile.rankPoints
+        record["loginStreak"] = profile.loginStreak
+        record["lastLoginDate"] = profile.lastLoginDate as CKRecordValue?
+        record["lastDailyBonusDate"] = profile.lastDailyBonusDate as CKRecordValue?
+        record["lastGameCompletedDate"] = profile.lastGameCompletedDate as CKRecordValue?
+        record["dailyChallengeData"] = profile.dailyChallengeData as CKRecordValue?
+        record["weeklyChallengeData"] = profile.weeklyChallengeData as CKRecordValue?
+        record["lastChallengeDate"] = profile.lastChallengeDate as CKRecordValue?
+        record["lastChallengeWeek"] = profile.lastChallengeWeek as CKRecordValue?
+        record["unlockedAchievements"] = profile.unlockedAchievements as CKRecordValue?
+        
         if let avatarData = profile.avatarImageData {
             // Save avatar as asset
             let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -254,6 +268,20 @@ class CloudKitService {
         profile.hasEmotePack = ((record["hasEmotePack"] as? Int) ?? 0) != 0
         profile.currentWinStreak = (record["currentWinStreak"] as? Int) ?? 0
         profile.bestWinStreak = (record["bestWinStreak"] as? Int) ?? 0
+        
+        // Engagement fields
+        profile.totalXP = (record["totalXP"] as? Int) ?? 0
+        profile.playerLevel = (record["playerLevel"] as? Int) ?? 0
+        profile.rankPoints = (record["rankPoints"] as? Int) ?? 0
+        profile.loginStreak = (record["loginStreak"] as? Int) ?? 0
+        profile.lastLoginDate = record["lastLoginDate"] as? Date
+        profile.lastDailyBonusDate = record["lastDailyBonusDate"] as? Date
+        profile.lastGameCompletedDate = record["lastGameCompletedDate"] as? Date
+        profile.dailyChallengeData = record["dailyChallengeData"] as? String
+        profile.weeklyChallengeData = record["weeklyChallengeData"] as? String
+        profile.lastChallengeDate = record["lastChallengeDate"] as? String
+        profile.lastChallengeWeek = record["lastChallengeWeek"] as? String
+        profile.unlockedAchievements = record["unlockedAchievements"] as? String
     }
     
     /// Search for users by username or display name

@@ -58,6 +58,31 @@ struct PlayerProfileView: View {
                             }
                         }
                         
+                        // Level & Rank
+                        Section("Level & Rank") {
+                            HStack {
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .foregroundColor(.blue)
+                                Text("Level \(profile.playerLevel)")
+                                    .font(.headline)
+                                Spacer()
+                                Text("\(profile.totalXP) XP")
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            HStack {
+                                let tier = profile.rankTier
+                                Image(systemName: tier.icon)
+                                    .foregroundColor(tier.color)
+                                Text(tier.displayName)
+                                    .font(.headline)
+                                Spacer()
+                                Text("\(profile.rankPoints) RP")
+                                    .bold()
+                                    .foregroundColor(tier.color)
+                            }
+                        }
+                        
                         Section("Statistics") {
                             HStack {
                                 Label("Quickets", systemImage: "ticket.fill")

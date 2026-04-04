@@ -64,6 +64,36 @@ final class UserProfile {
     var currentWinStreak: Int = 0
     var bestWinStreak: Int = 0
     
+    // MARK: - XP & Level
+    
+    var totalXP: Int = 0
+    var playerLevel: Int = 0
+    
+    // MARK: - Rank Points
+    
+    var rankPoints: Int = 0
+    
+    // MARK: - Daily Login
+    
+    var loginStreak: Int = 0
+    var lastLoginDate: Date?
+    var lastDailyBonusDate: Date?
+    
+    // MARK: - Challenge Progress (JSON strings, reset daily/weekly by EngagementManager)
+    
+    var dailyChallengeData: String?
+    var weeklyChallengeData: String?
+    var lastChallengeDate: String?   // "yyyy-MM-dd"
+    var lastChallengeWeek: String?   // "yyyy-Www"
+    
+    // MARK: - First Game of Day
+    
+    var lastGameCompletedDate: Date?
+    
+    // MARK: - Achievements (comma-separated raw values)
+    
+    var unlockedAchievements: String?
+    
     init(username: String, displayName: String, cloudKitRecordName: String? = nil) {
         self.id = UUID()
         self.username = username
@@ -146,5 +176,30 @@ final class UserProfile {
     
     var activeGameInviteTheme: GameInviteTheme {
         GameInviteTheme(rawValue: equippedGameInviteTheme ?? "") ?? .classic
+    }
+    
+    // MARK: - Engagement Helpers
+    
+    var rankTier: RankTier {
+        RankTier(fromRP: rankPoints)
+    }
+    
+    /// Login streak XP multiplier: 1.0x to 1.5x (caps at 5-day streak)
+    var loginStreakMultiplier: Double {
+        1.0 + Double(min(loginStreak, 5)) * 0.1
+    }
+    
+    /// Whether today's first game hasn't been completed yet
+    var isFirstGameToday: Bool {
+        guard let lastDate = lastGameCompletedDate else { return true }
+        return !Calendar.current.isDateInToday(lastDate)
+    }
+    
+    func hasAchievement(_ achievement: Achievement) -> Bool {
+        ownsItem(in: unlockedAchievements, rawValue: achievement.rawValue)
+    }
+    
+    func unlockAchievement(_ achievement: Achievement) {
+        unlockedAchievements = UserProfile.addToOwnedSet(unlockedAchievements, rawValue: achievement.rawValue)
     }
 }

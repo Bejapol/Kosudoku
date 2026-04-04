@@ -126,6 +126,54 @@
         {
           "name": "bestWinStreak",
           "type": "INT64"
+        },
+        {
+          "name": "totalXP",
+          "type": "INT64"
+        },
+        {
+          "name": "playerLevel",
+          "type": "INT64"
+        },
+        {
+          "name": "rankPoints",
+          "type": "INT64"
+        },
+        {
+          "name": "loginStreak",
+          "type": "INT64"
+        },
+        {
+          "name": "lastLoginDate",
+          "type": "TIMESTAMP"
+        },
+        {
+          "name": "lastDailyBonusDate",
+          "type": "TIMESTAMP"
+        },
+        {
+          "name": "lastGameCompletedDate",
+          "type": "TIMESTAMP"
+        },
+        {
+          "name": "dailyChallengeData",
+          "type": "STRING"
+        },
+        {
+          "name": "weeklyChallengeData",
+          "type": "STRING"
+        },
+        {
+          "name": "lastChallengeDate",
+          "type": "STRING"
+        },
+        {
+          "name": "lastChallengeWeek",
+          "type": "STRING"
+        },
+        {
+          "name": "unlockedAchievements",
+          "type": "STRING"
         }
       ],
       "indexes": [

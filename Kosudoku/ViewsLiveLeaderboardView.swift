@@ -157,6 +157,7 @@ struct LeaderboardRowView: View {
     @State private var profileImageData: Data?
     @State private var titleBadge: TitleBadge?
     @State private var profileFrame: ProfileFrame?
+    @State private var rankTier: RankTier?
     @State private var cloudKitService = CloudKitService.shared
     @State private var showingProfile = false
     
@@ -191,6 +192,10 @@ struct LeaderboardRowView: View {
                             .background(Color.purple.opacity(0.15))
                             .foregroundColor(.purple)
                             .cornerRadius(3)
+                    }
+                    
+                    if let tier = rankTier {
+                        RankTierBadge(tier: tier, showLabel: false, size: 12)
                     }
                 }
                 .onTapGesture { showingProfile = true }
@@ -245,6 +250,7 @@ struct LeaderboardRowView: View {
     private static var photoCache: [String: Data] = [:]
     private static var badgeCache: [String: TitleBadge] = [:]
     private static var frameCache: [String: ProfileFrame] = [:]
+    private static var rankCache: [String: RankTier] = [:]
     
     // Fetch profile photo from CloudKit
     private func loadProfilePhoto() async {
@@ -258,6 +264,9 @@ struct LeaderboardRowView: View {
         if let cachedFrame = Self.frameCache[player.playerRecordName] {
             profileFrame = cachedFrame
         }
+        if let cachedRank = Self.rankCache[player.playerRecordName] {
+            rankTier = cachedRank
+        }
         if Self.photoCache[player.playerRecordName] != nil {
             return
         }
@@ -267,11 +276,13 @@ struct LeaderboardRowView: View {
             profileImageData = currentProfile.avatarImageData
             titleBadge = currentProfile.activeTitleBadge
             profileFrame = currentProfile.activeProfileFrame
+            rankTier = currentProfile.rankTier
             if let data = currentProfile.avatarImageData {
                 Self.photoCache[player.playerRecordName] = data
             }
             Self.badgeCache[player.playerRecordName] = currentProfile.activeTitleBadge
             Self.frameCache[player.playerRecordName] = currentProfile.activeProfileFrame
+            Self.rankCache[player.playerRecordName] = currentProfile.rankTier
             return
         }
         
@@ -281,11 +292,13 @@ struct LeaderboardRowView: View {
                 profileImageData = profile.avatarImageData
                 titleBadge = profile.activeTitleBadge
                 profileFrame = profile.activeProfileFrame
+                rankTier = profile.rankTier
                 if let data = profile.avatarImageData {
                     Self.photoCache[player.playerRecordName] = data
                 }
                 Self.badgeCache[player.playerRecordName] = profile.activeTitleBadge
                 Self.frameCache[player.playerRecordName] = profile.activeProfileFrame
+                Self.rankCache[player.playerRecordName] = profile.rankTier
             }
         } catch {
             print("Failed to load profile photo for \(player.playerUsername): \(error)")
@@ -421,6 +434,63 @@ struct ScoringInfoView: View {
                     }
                     .font(.subheadline)
                     Text("If all tiebreakers are equal, both players win.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Section("XP (Experience Points)") {
+                    HStack {
+                        Label("Correct cell", systemImage: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Spacer()
+                        Text("+2 XP")
+                            .bold()
+                    }
+                    HStack {
+                        Label("Solo win", systemImage: "trophy.fill")
+                            .foregroundColor(.yellow)
+                        Spacer()
+                        Text("+20 XP")
+                            .bold()
+                    }
+                    HStack {
+                        Label("Multiplayer win", systemImage: "trophy.fill")
+                            .foregroundColor(.yellow)
+                        Spacer()
+                        Text("+40 XP")
+                            .bold()
+                    }
+                    HStack {
+                        Label("First game of day", systemImage: "sun.max.fill")
+                            .foregroundColor(.orange)
+                        Spacer()
+                        Text("2x XP")
+                            .bold()
+                            .foregroundColor(.orange)
+                    }
+                    Text("XP drives your player level. Login streaks provide up to 1.5x XP multiplier.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Section("Rank Points (RP)") {
+                    HStack {
+                        Label("Multiplayer win", systemImage: "arrow.up.circle.fill")
+                            .foregroundColor(.green)
+                        Spacer()
+                        Text("+25 RP")
+                            .bold()
+                            .foregroundColor(.green)
+                    }
+                    HStack {
+                        Label("Multiplayer loss", systemImage: "arrow.down.circle.fill")
+                            .foregroundColor(.red)
+                        Spacer()
+                        Text("-15 RP")
+                            .bold()
+                            .foregroundColor(.red)
+                    }
+                    Text("RP determines your competitive rank tier: Bronze, Silver, Gold, Platinum, Diamond, Master. RP is only gained or lost in multiplayer games.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
