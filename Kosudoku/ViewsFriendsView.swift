@@ -16,6 +16,8 @@ struct FriendsView: View {
     @State private var isSyncing = false
     @State private var friendToRemove: Friendship?
     @State private var showingRemoveAlert = false
+    @State private var friendToBlock: Friendship?
+    @State private var showingBlockAlert = false
     private let cloudKitService = CloudKitService.shared
     
     var body: some View {
@@ -44,6 +46,11 @@ struct FriendsView: View {
                                     friendToRemove = friendship
                                     showingRemoveAlert = true
                                 }
+                                Button("Block") {
+                                    friendToBlock = friendship
+                                    showingBlockAlert = true
+                                }
+                                .tint(.red)
                             }
                         }
                     }
@@ -52,7 +59,10 @@ struct FriendsView: View {
                 if !receivedRequests.isEmpty {
                     Section("Friend Requests") {
                         ForEach(receivedRequests, id: \.id) { friendship in
-                            PendingRequestRow(friendship: friendship) {
+                            PendingRequestRow(
+                                friendship: friendship,
+                                otherRecordName: otherPersonRecordName(friendship)
+                            ) {
                                 acceptFriendRequest(friendship)
                             } onDecline: {
                                 declineFriendRequest(friendship)
@@ -65,6 +75,8 @@ struct FriendsView: View {
                     Section("Sent Requests") {
                         ForEach(sentRequests, id: \.id) { friendship in
                             HStack {
+                                OnlineStatusIndicator(ownerRecordName: otherPersonRecordName(friendship))
+                                
                                 VStack(alignment: .leading) {
                                     Text(friendship.friendDisplayName)
                                         .font(.headline)
@@ -76,6 +88,35 @@ struct FriendsView: View {
                                 Text("Pending")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+                
+                if !blockedUsers.isEmpty {
+                    Section("Blocked Users") {
+                        ForEach(blockedUsers, id: \.id) { friendship in
+                            HStack {
+                                OnlineStatusIndicator(ownerRecordName: otherPersonRecordName(friendship))
+                                
+                                VStack(alignment: .leading) {
+                                    Text(friendship.friendDisplayName)
+                                        .font(.headline)
+                                    Text("@\(friendship.friendUsername)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .swipeActions(edge: .trailing) {
+                                Button("Unblock") {
+                                    unblockUser(friendship)
+                                }
+                                .tint(.green)
+                                Button("Remove", role: .destructive) {
+                                    friendToRemove = friendship
+                                    showingRemoveAlert = true
+                                }
                             }
                         }
                     }
@@ -116,6 +157,21 @@ struct FriendsView: View {
                     Text("Are you sure you want to remove \(friendship.friendDisplayName) from your friends?")
                 }
             }
+            .alert("Block User", isPresented: $showingBlockAlert) {
+                Button("Block", role: .destructive) {
+                    if let friendship = friendToBlock {
+                        blockUser(friendship)
+                    }
+                    friendToBlock = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    friendToBlock = nil
+                }
+            } message: {
+                if let friendship = friendToBlock {
+                    Text("Block \(friendship.friendDisplayName)? They won't be able to send you game invites or friend requests.")
+                }
+            }
         }
     }
     
@@ -131,6 +187,10 @@ struct FriendsView: View {
     
     private var acceptedFriends: [Friendship] {
         friendships.filter { $0.status == .accepted }
+    }
+    
+    private var blockedUsers: [Friendship] {
+        friendships.filter { $0.status == .blocked }
     }
     
     /// Requests sent TO me (I am the friendRecordName — the recipient)
@@ -267,6 +327,34 @@ struct FriendsView: View {
             }
         }
     }
+    
+    private func blockUser(_ friendship: Friendship) {
+        friendship.status = .blocked
+        try? modelContext.save()
+        
+        if let ckRecordName = friendship.cloudKitRecordName {
+            Task {
+                try? await cloudKitService.updateFriendshipStatus(
+                    cloudKitRecordName: ckRecordName,
+                    status: .blocked
+                )
+            }
+        }
+    }
+    
+    private func unblockUser(_ friendship: Friendship) {
+        friendship.status = .accepted
+        try? modelContext.save()
+        
+        if let ckRecordName = friendship.cloudKitRecordName {
+            Task {
+                try? await cloudKitService.updateFriendshipStatus(
+                    cloudKitRecordName: ckRecordName,
+                    status: .accepted
+                )
+            }
+        }
+    }
 }
 
 struct FriendRow: View {
@@ -289,6 +377,9 @@ struct FriendRow: View {
                     displayName: friendship.friendDisplayName,
                     size: 40
                 )
+                .overlay(alignment: .bottomTrailing) {
+                    OnlineStatusIndicator(ownerRecordName: otherRecordName)
+                }
                 
                 VStack(alignment: .leading) {
                     Text(friendship.friendDisplayName)
@@ -330,11 +421,14 @@ struct FriendRow: View {
 
 struct PendingRequestRow: View {
     let friendship: Friendship
+    let otherRecordName: String
     let onAccept: () -> Void
     let onDecline: () -> Void
     
     var body: some View {
         HStack {
+            OnlineStatusIndicator(ownerRecordName: otherRecordName)
+            
             VStack(alignment: .leading) {
                 Text(friendship.friendDisplayName)
                     .font(.headline)

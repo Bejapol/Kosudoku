@@ -413,7 +413,7 @@ class ChatNotificationManager {
             let notificationInfo = CKSubscription.NotificationInfo()
             notificationInfo.shouldSendContentAvailable = true
             notificationInfo.alertBody = "New chat message"
-            notificationInfo.soundName = "default"
+            notificationInfo.soundName = "notification_click.caf"
             notificationInfo.desiredKeys = ["senderRecordName", "senderUsername", "content"]
             subscription.notificationInfo = notificationInfo
             
@@ -447,7 +447,7 @@ class ChatNotificationManager {
             let notificationInfo = CKSubscription.NotificationInfo()
             notificationInfo.shouldSendContentAvailable = true
             notificationInfo.alertBody = "New chat message"
-            notificationInfo.soundName = "default"
+            notificationInfo.soundName = "notification_click.caf"
             notificationInfo.desiredKeys = ["senderRecordName", "senderUsername", "content"]
             subscription.notificationInfo = notificationInfo
             
@@ -483,7 +483,7 @@ class ChatNotificationManager {
             let notificationInfo = CKSubscription.NotificationInfo()
             notificationInfo.shouldSendContentAvailable = true
             notificationInfo.alertBody = "New friend request"
-            notificationInfo.soundName = "default"
+            notificationInfo.soundName = "notification_click.caf"
             notificationInfo.desiredKeys = ["userRecordName", "userUsername", "userDisplayName"]
             subscription.notificationInfo = notificationInfo
             
@@ -518,7 +518,7 @@ class ChatNotificationManager {
             let notificationInfo = CKSubscription.NotificationInfo()
             notificationInfo.shouldSendContentAvailable = true
             notificationInfo.alertBody = "New game invitation"
-            notificationInfo.soundName = "default"
+            notificationInfo.soundName = "notification_click.caf"
             notificationInfo.desiredKeys = ["hostRecordName", "difficulty"]
             subscription.notificationInfo = notificationInfo
             

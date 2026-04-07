@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import CloudKit
 
 struct GameLobbyView: View {
     @Bindable var gameManager: GameManager
@@ -14,6 +15,9 @@ struct GameLobbyView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showingCancelAlert = false
     @State private var showingGameView = false
+    @State private var currentEmoteEvent: EmoteEvent?
+    @State private var seenEmoteIDs: Set<String> = []
+    @State private var emoteTimer: Timer?
     
     private let cloudKitService = CloudKitService.shared
     
@@ -209,7 +213,12 @@ struct GameLobbyView: View {
                     .animation(.spring(response: 0.3, dampingFraction: 0.6), value: seconds)
             }
         }
+        .overlay {
+            EmoteAnimationOverlay(emoteEvent: $currentEmoteEvent)
+        }
         .animation(.easeInOut(duration: 0.3), value: gameManager.countdownSeconds)
+        .onAppear { startEmotePolling() }
+        .onDisappear { stopEmotePolling() }
         .navigationTitle("Game Lobby")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -276,6 +285,10 @@ struct GameLobbyView: View {
             return
         }
         
+        // Show animation and play sound locally immediately
+        currentEmoteEvent = EmoteEvent(emote: emote, senderUsername: username, isCurrentUser: true)
+        GameSoundManager.shared.playEmoteSound(for: emote)
+        
         let message = ChatMessage(
             senderRecordName: senderRecordName,
             senderUsername: username,
@@ -284,10 +297,64 @@ struct GameLobbyView: View {
             gameSession: game
         )
         
+        // Track so we don't replay our own emote from polling
+        seenEmoteIDs.insert(message.stableID)
+        
         do {
             try await cloudKitService.sendChatMessage(message, gameRecordName: gameRecordName)
         } catch {
             print("Error sending lobby emote: \(error)")
+        }
+    }
+    
+    // MARK: - Emote Polling
+    
+    private func startEmotePolling() {
+        emoteTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            Task { await fetchEmotes() }
+        }
+    }
+    
+    private func stopEmotePolling() {
+        emoteTimer?.invalidate()
+        emoteTimer = nil
+    }
+    
+    private func fetchEmotes() async {
+        guard let gameRecordName = gameManager.currentGame?.cloudKitRecordName else { return }
+        
+        do {
+            let records = try await cloudKitService.fetchChatMessages(gameRecordName: gameRecordName)
+            
+            for record in records {
+                guard let messageTypeRaw = record["messageType"] as? String,
+                      messageTypeRaw == "reaction",
+                      let senderRecordName = record["senderRecordName"] as? String,
+                      let senderUsername = record["senderUsername"] as? String,
+                      let content = record["content"] as? String else {
+                    continue
+                }
+                
+                let timestamp = (record["timestamp"] as? Date) ?? Date()
+                let stableKey = "\(senderRecordName)|\(content)|\(Int(timestamp.timeIntervalSince1970))"
+                
+                // Skip already-seen emotes
+                guard !seenEmoteIDs.contains(stableKey) else { continue }
+                seenEmoteIDs.insert(stableKey)
+                
+                // Skip own emotes (already shown locally)
+                guard senderRecordName != cloudKitService.currentUserRecordName else { continue }
+                
+                // Show the most recent new emote
+                if let emote = GameEmote(rawValue: content) {
+                    await MainActor.run {
+                        currentEmoteEvent = EmoteEvent(emote: emote, senderUsername: senderUsername, isCurrentUser: false)
+                        GameSoundManager.shared.playEmoteSound(for: emote)
+                    }
+                }
+            }
+        } catch {
+            print("Error fetching lobby emotes: \(error)")
         }
     }
     
@@ -376,6 +443,9 @@ struct LobbyPlayerRow: View {
                 displayName: name,
                 size: 40
             )
+            .overlay(alignment: .bottomTrailing) {
+                OnlineStatusIndicator(ownerRecordName: ownerRecordName)
+            }
             
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {

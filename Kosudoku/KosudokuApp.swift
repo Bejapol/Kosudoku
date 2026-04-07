@@ -131,6 +131,8 @@ struct KosudokuApp: App {
                     // Start StoreKit transaction listener and load products
                     storeManager.startTransactionListener()
                     await storeManager.loadProducts()
+                    // Start online status heartbeat
+                    OnlineStatusService.shared.startHeartbeat()
                 }
         }
     }

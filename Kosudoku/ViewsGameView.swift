@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import Combine
+import CloudKit
 
 struct GameView: View {
     @Bindable var gameManager: GameManager
@@ -22,7 +23,10 @@ struct GameView: View {
     @State private var levelUpNumber: Int?
     @State private var achievementToShow: Achievement?
     @State private var viewMode: ViewMode = .balanced
-    @State private var showingTimeFreezeIndicator = false
+    @State private var currentEmoteEvent: EmoteEvent?
+    @State private var seenEmoteIDs: Set<String> = []
+    @State private var emoteTimer: Timer?
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     
@@ -122,23 +126,7 @@ struct GameView: View {
                             boardSkin: userBoardSkin
                         )
                         .frame(width: gridSize, height: gridSize)
-                        .overlay(alignment: .topTrailing) {
-                            // Time freeze indicator
-                            if gameManager.isTimeFrozen {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "snowflake")
-                                    Text("FROZEN")
-                                        .font(.caption2)
-                                        .bold()
-                                }
-                                .foregroundColor(.cyan)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(.ultraThinMaterial)
-                                .cornerRadius(8)
-                                .padding(8)
-                            }
-                        }
+
                         
                         Spacer()
                     }
@@ -301,6 +289,11 @@ struct GameView: View {
                     .allowsHitTesting(false)
             }
         }
+        .overlay {
+            EmoteAnimationOverlay(emoteEvent: $currentEmoteEvent)
+        }
+        .onAppear { startEmotePolling() }
+        .onDisappear { stopEmotePolling() }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -366,7 +359,11 @@ struct GameView: View {
         }
         .sheet(isPresented: $showingChat) {
             if let game = gameManager.currentGame {
-                GameChatView(gameSession: game)
+                GameChatView(gameSession: game, onEmoteSent: { emote in
+                    let username = CloudKitService.shared.currentUserProfile?.username ?? ""
+                    currentEmoteEvent = EmoteEvent(emote: emote, senderUsername: username, isCurrentUser: true)
+                    GameSoundManager.shared.playEmoteSound(for: emote)
+                })
             }
         }
         .onChange(of: gameManager.gameEndResult) { _, newResult in
@@ -385,16 +382,7 @@ struct GameView: View {
                 gameManager.triggerSync()
             }
         }
-        .onChange(of: engagementManager.recentLevelUp) { _, newLevel in
-            if let level = newLevel {
-                showLevelUpOverlay(level: level)
-            }
-        }
-        .onChange(of: engagementManager.recentAchievements) { _, achievements in
-            if let first = achievements.first {
-                showAchievementOverlay(achievement: first)
-            }
-        }
+        
         .onChange(of: scenePhase) { _, newPhase in
             // Sync immediately when returning from background
             if newPhase == .active && !isViewingCompleted {
@@ -424,24 +412,6 @@ struct GameView: View {
                 .cornerRadius(8)
             }
             .disabled(!gameManager.canUseHintToken)
-            
-            // Time Freeze
-            Button {
-                Task { await gameManager.useTimeFreeze() }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "snowflake")
-                        .font(.caption)
-                    Text("Freeze (\(cloudKitService.currentUserProfile?.timeFreezes ?? 0))")
-                        .font(.caption)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(gameManager.canUseTimeFreeze ? Color.cyan.opacity(0.3) : Color(.systemGray5))
-                .foregroundColor(gameManager.canUseTimeFreeze ? .cyan : .secondary)
-                .cornerRadius(8)
-            }
-            .disabled(!gameManager.canUseTimeFreeze)
             
             Spacer()
             
@@ -494,37 +464,118 @@ struct GameView: View {
     /// Show the win/loss overlay, then quicket animation (multiplayer wins only).
     /// The game transitions to the results screen automatically after
     /// the animations complete (GameManager sets game.status = .completed).
+    // MARK: - Emote Polling
+    
+    private func startEmotePolling() {
+        emoteTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            Task { await fetchEmotes() }
+        }
+    }
+    
+    private func stopEmotePolling() {
+        emoteTimer?.invalidate()
+        emoteTimer = nil
+    }
+    
+    private func fetchEmotes() async {
+        guard let gameRecordName = gameManager.currentGame?.cloudKitRecordName else { return }
+        let cloudKit = CloudKitService.shared
+        
+        do {
+            let records = try await cloudKit.fetchChatMessages(gameRecordName: gameRecordName)
+            
+            for record in records {
+                guard let messageTypeRaw = record["messageType"] as? String,
+                      messageTypeRaw == "reaction",
+                      let senderRecordName = record["senderRecordName"] as? String,
+                      let senderUsername = record["senderUsername"] as? String,
+                      let content = record["content"] as? String else {
+                    continue
+                }
+                
+                let timestamp = (record["timestamp"] as? Date) ?? Date()
+                let stableKey = "\(senderRecordName)|\(content)|\(Int(timestamp.timeIntervalSince1970))"
+                
+                guard !seenEmoteIDs.contains(stableKey) else { continue }
+                seenEmoteIDs.insert(stableKey)
+                
+                // Skip own emotes (shown locally via chat callback)
+                guard senderRecordName != cloudKit.currentUserRecordName else { continue }
+                
+                if let emote = GameEmote(rawValue: content) {
+                    await MainActor.run {
+                        currentEmoteEvent = EmoteEvent(emote: emote, senderUsername: senderUsername, isCurrentUser: false)
+                        GameSoundManager.shared.playEmoteSound(for: emote)
+                    }
+                }
+            }
+        } catch {
+            print("Error fetching game emotes: \(error)")
+        }
+    }
+    
     private func showEndSequence() {
         guard !showingEndOverlay else { return }
         
         let showQuicket = gameManager.gameEndResult == .won && !gameManager.isOnlyPlayer
         
+        // Surface level-up/achievement rewards earned during the game
+        if let profile = CloudKitService.shared.currentUserProfile {
+            engagementManager.surfaceGameEndRewards(profile: profile)
+        }
+        let pendingLevelUp = engagementManager.recentLevelUp
+        let pendingAchievements = engagementManager.recentAchievements
+        
         withAnimation(.easeIn(duration: 0.3)) {
             showingEndOverlay = true
         }
         
+        // Track running delay for sequential animations
+        var nextDelay: Double = 2.5
+        
         // Dismiss the end overlay after 2.5s
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + nextDelay) {
             withAnimation(.easeOut(duration: 0.3)) {
                 showingEndOverlay = false
             }
-            
-            if showQuicket {
-                // Show quicket animation after a brief pause
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    withAnimation(.easeIn(duration: 0.2)) {
-                        showingQuicketAnimation = true
-                    }
-                }
-                // Dismiss quicket animation (game transitions to results
-                // automatically via GameManager's delayed status change)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.7) {
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        showingQuicketAnimation = false
-                    }
+        }
+        
+        if showQuicket {
+            // Show quicket animation after a brief pause
+            DispatchQueue.main.asyncAfter(deadline: .now() + nextDelay + 0.3) {
+                withAnimation(.easeIn(duration: 0.2)) {
+                    showingQuicketAnimation = true
                 }
             }
+            // Dismiss quicket animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + nextDelay + 2.7) {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    showingQuicketAnimation = false
+                }
+            }
+            nextDelay += 3.0
         }
+        
+        // Level-up overlay (after quicket or after win/loss if no quicket)
+        if let level = pendingLevelUp {
+            let levelUpStart = nextDelay + 0.5
+            DispatchQueue.main.asyncAfter(deadline: .now() + levelUpStart) {
+                showLevelUpOverlay(level: level)
+            }
+            nextDelay = levelUpStart + 3.5 // 3.0s display + 0.5s buffer
+        }
+        
+        // Achievement overlay (after level-up or after previous animation)
+        if let achievement = pendingAchievements.first {
+            let achievementStart = nextDelay + 0.5
+            DispatchQueue.main.asyncAfter(deadline: .now() + achievementStart) {
+                showAchievementOverlay(achievement: achievement)
+            }
+            nextDelay = achievementStart + 3.5
+        }
+        
+        // Tell GameManager how long to wait before transitioning to results
+        gameManager.scheduleGameCompletion(afterDelay: nextDelay + 0.5)
     }
 }
 
@@ -736,17 +787,6 @@ struct ScoreBreakdownView: View {
         player.incorrectGuesses * ScoringSystem.incorrectGuessPenalty
     }
     
-    private var speedBonus: Int {
-        max(0, player.score - (correctTotal - incorrectTotal))
-    }
-    
-    private var speedLabel: String {
-        if speedBonus > 0 {
-            return "Applied at end of game"
-        }
-        return "Calculated at end of game"
-    }
-    
     private var computedTotal: Int {
         player.score
     }
@@ -783,15 +823,6 @@ struct ScoreBreakdownView: View {
                         detail: "\(player.incorrectGuesses) × \(ScoringSystem.incorrectGuessPenalty) pts",
                         value: incorrectTotal > 0 ? -incorrectTotal : 0,
                         isPositive: false
-                    )
-                    
-                    Divider().padding(.leading, 16)
-                    
-                    breakdownRow(
-                        label: "Speed bonus",
-                        detail: speedLabel,
-                        value: speedBonus,
-                        isPositive: true
                     )
                 }
                 .background(Color(.systemGray6))

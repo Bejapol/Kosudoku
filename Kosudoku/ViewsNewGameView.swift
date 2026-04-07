@@ -41,6 +41,7 @@ struct NewGameView: View {
                         ForEach(acceptedFriends, id: \.id) { friendship in
                             let friendRecord = otherPersonRecordName(friendship)
                             HStack {
+                                OnlineStatusIndicator(ownerRecordName: friendRecord)
                                 Text(friendship.friendDisplayName)
                                 Spacer()
                                 if selectedFriends.contains(friendRecord) {

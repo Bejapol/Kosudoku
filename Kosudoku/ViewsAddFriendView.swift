@@ -177,6 +177,11 @@ struct UserSearchResultRow: View {
                             .font(.headline)
                     }
                 }
+                .overlay(alignment: .bottomTrailing) {
+                    if let owner = record["ownerRecordName"] as? String {
+                        OnlineStatusIndicator(ownerRecordName: owner)
+                    }
+                }
             
             VStack(alignment: .leading) {
                 if let displayName = record["displayName"] as? String {

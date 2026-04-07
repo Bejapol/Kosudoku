@@ -34,6 +34,8 @@ struct PlayerProfileView: View {
                                     )
                                     
                                     HStack(spacing: 6) {
+                                        OnlineStatusIndicator(ownerRecordName: ownerRecordName, size: 10)
+                                        
                                         Text(profile.displayName)
                                             .font(.title2)
                                             .bold()

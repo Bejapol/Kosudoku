@@ -30,21 +30,6 @@ struct ScoringSystem {
         }
     }
     
-    // Speed bonus (points for completing within time thresholds)
-    static func speedBonus(cellsCompleted: Int, timeElapsed: TimeInterval) -> Int {
-        let avgTimePerCell = timeElapsed / Double(max(cellsCompleted, 1))
-        
-        // Fast completion (under 10 seconds per cell average)
-        if avgTimePerCell < 10 {
-            return cellsCompleted * 5
-        }
-        // Medium speed (10-20 seconds per cell)
-        else if avgTimePerCell < 20 {
-            return cellsCompleted * 2
-        }
-        return 0
-    }
-    
     /// Calculate points for a correct guess
     static func pointsForCorrectGuess(difficulty: DifficultyLevel) -> Int {
         let basePoints = Double(correctGuessPoints)
@@ -52,29 +37,26 @@ struct ScoringSystem {
         return Int(basePoints * multiplier)
     }
     
-    /// Calculate penalty for incorrect guess
-    static func pointsForIncorrectGuess() -> Int {
-        return -incorrectGuessPenalty
+    /// Calculate penalty for incorrect guess (scales with difficulty like correct guesses)
+    static func pointsForIncorrectGuess(difficulty: DifficultyLevel) -> Int {
+        let basePenalty = Double(incorrectGuessPenalty)
+        let multiplier = difficultyMultiplier(for: difficulty)
+        return Int(basePenalty * multiplier)
     }
     
     /// Calculate final score for a player
     static func calculateFinalScore(
         correctGuesses: Int,
         incorrectGuesses: Int,
-        cellsCompleted: Int,
-        difficulty: DifficultyLevel,
-        timeElapsed: TimeInterval
+        difficulty: DifficultyLevel
     ) -> Int {
         // Base score from correct guesses
         let correctPoints = correctGuesses * pointsForCorrectGuess(difficulty: difficulty)
         
-        // Penalty from incorrect guesses
-        let incorrectPoints = incorrectGuesses * incorrectGuessPenalty
+        // Penalty from incorrect guesses (scales with difficulty)
+        let incorrectPoints = incorrectGuesses * pointsForIncorrectGuess(difficulty: difficulty)
         
-        // Speed bonus
-        let speedPoints = speedBonus(cellsCompleted: cellsCompleted, timeElapsed: timeElapsed)
-        
-        return max(0, correctPoints - incorrectPoints + speedPoints)
+        return max(0, correctPoints - incorrectPoints)
     }
     
     // MARK: - XP Calculations

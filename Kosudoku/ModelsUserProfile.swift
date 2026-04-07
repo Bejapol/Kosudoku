@@ -50,7 +50,6 @@ final class UserProfile {
     // MARK: - Consumable Boosts
     
     var hintTokens: Int = 0
-    var timeFreezes: Int = 0
     var undoShields: Int = 0
     var streakSavers: Int = 0
     
@@ -93,6 +92,10 @@ final class UserProfile {
     // MARK: - Achievements (comma-separated raw values)
     
     var unlockedAchievements: String?
+    
+    // MARK: - Online Status
+    
+    var lastActiveDate: Date?
     
     init(username: String, displayName: String, cloudKitRecordName: String? = nil) {
         self.id = UUID()

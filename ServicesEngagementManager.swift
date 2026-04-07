@@ -21,6 +21,11 @@ class EngagementManager {
     var recentLevelUp: Int?
     var recentAchievements: [Achievement] = []
     
+    // Tracks state at game start so we can surface level-ups/achievements only at conclusion
+    private(set) var levelAtGameStart: Int = 0
+    private(set) var achievementsAtGameStart: Set<String> = []
+    private(set) var isInGame: Bool = false
+    
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     
@@ -180,13 +185,16 @@ class EngagementManager {
         
         pendingXPGain += xpGained
         
-        // Check for level-up
+        // Auto-unlock level milestone cosmetics (always, regardless of game state)
         if profile.playerLevel > oldLevel {
-            recentLevelUp = profile.playerLevel
-            
-            // Auto-unlock level milestone cosmetics
             for level in (oldLevel + 1)...profile.playerLevel {
                 unlockLevelMilestone(level: level, profile: profile)
+            }
+            
+            // Only set the display trigger if NOT in a game — during a game,
+            // surfaceGameEndRewards() will handle it at game conclusion.
+            if !isInGame {
+                recentLevelUp = profile.playerLevel
             }
         }
         
@@ -311,7 +319,9 @@ class EngagementManager {
         if dailyChallenges.count == 3 && dailyChallenges.allSatisfy({ $0.isCompleted }) {
             if !profile.hasAchievement(.completionist) {
                 profile.unlockAchievement(.completionist)
-                recentAchievements.append(.completionist)
+                if !isInGame {
+                    recentAchievements.append(.completionist)
+                }
             }
         }
         
@@ -344,7 +354,11 @@ class EngagementManager {
         for (achievement, isMet) in checks {
             if isMet && !profile.hasAchievement(achievement) {
                 profile.unlockAchievement(achievement)
-                recentAchievements.append(achievement)
+                // Only set the display trigger if NOT in a game — during a game,
+                // surfaceGameEndRewards() will handle it at game conclusion.
+                if !isInGame {
+                    recentAchievements.append(achievement)
+                }
             }
         }
     }
@@ -355,6 +369,36 @@ class EngagementManager {
         pendingRPChange = 0
         recentLevelUp = nil
         recentAchievements = []
+    }
+    
+    // MARK: - Game Lifecycle
+    
+    /// Snapshot the player's level and achievements before a game begins.
+    /// Call this when the game starts so we can detect what changed during the game.
+    func snapshotGameStart(profile: UserProfile) {
+        levelAtGameStart = profile.playerLevel
+        achievementsAtGameStart = Set(profile.unlockedAchievements?.components(separatedBy: ",").filter { !$0.isEmpty } ?? [])
+        isInGame = true
+        // Clear any stale display values from a previous session
+        recentLevelUp = nil
+        recentAchievements = []
+    }
+    
+    /// Compare current state against the game-start snapshot and populate
+    /// `recentLevelUp` / `recentAchievements` with what the player earned
+    /// during this game. Call this at game conclusion before showing overlays.
+    func surfaceGameEndRewards(profile: UserProfile) {
+        isInGame = false
+        
+        // Level-up: show the new level if it increased during the game
+        if profile.playerLevel > levelAtGameStart {
+            recentLevelUp = profile.playerLevel
+        }
+        
+        // Achievements: find any that were unlocked during the game
+        let currentAchievements = Set(profile.unlockedAchievements?.components(separatedBy: ",").filter { !$0.isEmpty } ?? [])
+        let newAchievements = currentAchievements.subtracting(achievementsAtGameStart)
+        recentAchievements = newAchievements.compactMap { Achievement(rawValue: $0) }
     }
     
     // MARK: - Level Milestone Cosmetic Unlocks

@@ -12,9 +12,14 @@ import CloudKit
 struct ChatsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var groupChats: [GroupChat]
+    @Query private var chatMessages: [ChatMessage]
     @State private var showingNewChat = false
     @State private var cloudKitService = CloudKitService.shared
     @State private var isLoading = false
+    @State private var chatToDelete: GroupChat?
+    @State private var showingDeleteAlert = false
+    @State private var chatToLeave: GroupChat?
+    @State private var showingLeaveAlert = false
     
     var body: some View {
         NavigationStack {
@@ -31,6 +36,19 @@ struct ChatsView: View {
                             GroupChatView(groupChat: chat)
                         } label: {
                             GroupChatRow(groupChat: chat)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            if chat.creatorRecordName == cloudKitService.currentUserRecordName {
+                                Button("Delete", role: .destructive) {
+                                    chatToDelete = chat
+                                    showingDeleteAlert = true
+                                }
+                            }
+                            Button("Leave") {
+                                chatToLeave = chat
+                                showingLeaveAlert = true
+                            }
+                            .tint(.orange)
                         }
                     }
                 }
@@ -53,6 +71,86 @@ struct ChatsView: View {
             }
             .refreshable {
                 await fetchCloudKitChats()
+            }
+            .alert("Delete Chat", isPresented: $showingDeleteAlert) {
+                Button("Delete", role: .destructive) {
+                    if let chat = chatToDelete {
+                        deleteChat(chat)
+                    }
+                    chatToDelete = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    chatToDelete = nil
+                }
+            } message: {
+                Text("This will delete the chat and all messages for everyone. This cannot be undone.")
+            }
+            .alert("Leave Chat", isPresented: $showingLeaveAlert) {
+                Button("Leave", role: .destructive) {
+                    if let chat = chatToLeave {
+                        leaveChat(chat)
+                    }
+                    chatToLeave = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    chatToLeave = nil
+                }
+            } message: {
+                Text("You will no longer see messages in this chat.")
+            }
+        }
+    }
+    
+    // MARK: - Chat Management
+    
+    private func deleteChat(_ chat: GroupChat) {
+        let ckRecordName = chat.cloudKitRecordName
+        let groupChatID = chat.id.uuidString
+        
+        // Delete local messages for this chat
+        let localMessages = chatMessages.filter { $0.groupChatID == groupChatID }
+        for message in localMessages {
+            modelContext.delete(message)
+        }
+        
+        // Delete the local chat
+        modelContext.delete(chat)
+        try? modelContext.save()
+        
+        // Delete from CloudKit
+        if let ckRecordName {
+            Task {
+                try? await cloudKitService.deleteGroupChat(
+                    cloudKitRecordName: ckRecordName,
+                    groupChatID: groupChatID
+                )
+            }
+        }
+    }
+    
+    private func leaveChat(_ chat: GroupChat) {
+        guard let currentUser = cloudKitService.currentUserRecordName else { return }
+        let ckRecordName = chat.cloudKitRecordName
+        let hasOtherMembers = chat.memberRecordNames.contains { $0 != currentUser } ||
+                              (chat.creatorRecordName != currentUser)
+        
+        if !hasOtherMembers {
+            // Last member — delete the entire chat
+            deleteChat(chat)
+            return
+        }
+        
+        // Remove locally
+        modelContext.delete(chat)
+        try? modelContext.save()
+        
+        // Update CloudKit
+        if let ckRecordName {
+            Task {
+                try? await cloudKitService.leaveGroupChat(
+                    cloudKitRecordName: ckRecordName,
+                    memberRecordName: currentUser
+                )
             }
         }
     }

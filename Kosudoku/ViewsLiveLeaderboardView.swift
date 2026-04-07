@@ -72,11 +72,14 @@ struct CompactLeaderboardView: View {
                     PositionBadge(position: index + 1)
                     
                     // Player name
-                    Text(player.playerUsername)
-                        .font(.caption)
-                        .lineLimit(1)
-                        .foregroundColor(isCurrentUser ? playerColor : .primary)
-                        .bold(isCurrentUser)
+                    HStack(spacing: 3) {
+                        OnlineStatusIndicator(ownerRecordName: player.playerRecordName, size: 6)
+                        Text(player.playerUsername)
+                            .font(.caption)
+                            .lineLimit(1)
+                            .foregroundColor(isCurrentUser ? playerColor : .primary)
+                            .bold(isCurrentUser)
+                    }
                     
                     // Score with player color outline
                     Text("\(player.score)")
@@ -174,6 +177,9 @@ struct LeaderboardRowView: View {
                 size: 36,
                 profileFrame: profileFrame
             )
+            .overlay(alignment: .bottomTrailing) {
+                OnlineStatusIndicator(ownerRecordName: player.playerRecordName, size: 7)
+            }
             .onTapGesture { showingProfile = true }
             
             // Player info
@@ -380,7 +386,7 @@ struct ScoringInfoView: View {
                         Label("Incorrect guess", systemImage: "xmark.circle.fill")
                             .foregroundColor(.red)
                         Spacer()
-                        Text("\(ScoringSystem.pointsForIncorrectGuess()) pts")
+                        Text("-\(ScoringSystem.pointsForIncorrectGuess(difficulty: difficulty)) pts")
                             .bold()
                     }
                 }
@@ -510,7 +516,7 @@ struct ScoringInfoView: View {
                 }
                 
                 Section {
-                    Text("Your final score is the sum of all correct-guess points, minus incorrect-guess penalties, plus any speed bonus. The minimum score is 0.")
+                    Text("Your final score is the sum of all correct-guess points, minus incorrect-guess penalties. The minimum score is 0.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }

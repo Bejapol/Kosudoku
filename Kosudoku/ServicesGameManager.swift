@@ -74,15 +74,8 @@ class GameManager {
     
     /// Whether the player has used their hint token this game
     private(set) var hasUsedHintToken = false
-    /// Whether the player has used their time freeze this game
-    private(set) var hasUsedTimeFreeze = false
     /// Whether the player has used their undo shield this game
     private(set) var hasUsedUndoShield = false
-    /// Whether time is currently frozen (30s timer)
-    var isTimeFrozen = false
-    /// Whether a time freeze was used (for speed bonus adjustment)
-    private var didUseTimeFreeze = false
-    private var freezeTimer: Timer?
     
     private let cloudKit = CloudKitService.shared
     private let engagementManager = EngagementManager.shared
@@ -593,22 +586,24 @@ class GameManager {
             } else {
                 // Normal incorrect penalty
                 playerState.incorrectGuesses += 1
-                playerState.score += ScoringSystem.pointsForIncorrectGuess()
+                let penalty = ScoringSystem.pointsForIncorrectGuess(difficulty: game.difficulty)
+                playerState.score -= penalty
                 playerState.lastMoveAt = Date()
                 
                 GameSoundManager.shared.playIncorrectSound()
-                lastCellEffect = CellEffect(row: row, col: col, kind: .incorrect, value: value, color: effectColor, points: ScoringSystem.pointsForIncorrectGuess())
+                lastCellEffect = CellEffect(row: row, col: col, kind: .incorrect, value: value, color: effectColor, points: -penalty)
             }
         }
         
         // Save locally
         try modelContext.save()
         
-        // Sync to CloudKit (non-critical — don't crash if CloudKit fails)
+        // Sync to CloudKit in parallel (non-critical — don't crash if CloudKit fails)
         if let gameRecordName = game.cloudKitRecordName {
             do {
-                try await cloudKit.savePlayerState(playerState, gameRecordName: gameRecordName)
-                try await cloudKit.updateGameSession(game)
+                async let savePlayer: () = cloudKit.savePlayerState(playerState, gameRecordName: gameRecordName)
+                async let saveGame: () = cloudKit.updateGameSession(game)
+                _ = try await (savePlayer, saveGame)
             } catch {
                 print("⚠️ CloudKit sync after move failed (will retry on next sync): \(error.localizedDescription)")
             }
@@ -693,13 +688,6 @@ class GameManager {
         (cloudKit.currentUserProfile?.hintTokens ?? 0) > 0
     }
     
-    /// Whether time freeze can be used right now
-    var canUseTimeFreeze: Bool {
-        !hasUsedTimeFreeze && !isTimeFrozen &&
-        (otherPlayers.count > 0 || (currentGame?.invitedPlayers.isEmpty == false)) &&
-        (cloudKit.currentUserProfile?.timeFreezes ?? 0) > 0
-    }
-    
     /// Use a hint token to reveal one correct cell in multiplayer
     func useHintToken() async {
         guard canUseHintToken,
@@ -757,39 +745,10 @@ class GameManager {
         }
     }
     
-    /// Activate time freeze: pauses the local timer for 30 seconds
-    func useTimeFreeze() async {
-        guard canUseTimeFreeze,
-              let profile = cloudKit.currentUserProfile else { return }
-        
-        profile.timeFreezes -= 1
-        hasUsedTimeFreeze = true
-        didUseTimeFreeze = true
-        isTimeFrozen = true
-        
-        GameSoundManager.shared.playFreezeSound()
-        
-        try? await cloudKit.saveUserProfile(profile)
-        
-        // Unfreeze after 30 seconds
-        let timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: false) { _ in }
-        freezeTimer = timer
-        Task {
-            try? await Task.sleep(for: .seconds(30))
-            isTimeFrozen = false
-            timer.invalidate()
-        }
-    }
-    
     /// Reset per-game boost flags (called when joining a new game)
     private func resetBoostFlags() {
         hasUsedHintToken = false
-        hasUsedTimeFreeze = false
         hasUsedUndoShield = false
-        isTimeFrozen = false
-        didUseTimeFreeze = false
-        freezeTimer?.invalidate()
-        freezeTimer = nil
     }
     
     /// Complete the game
@@ -809,7 +768,7 @@ class GameManager {
         guard game.status != .completed, gameEndResult == nil else { return }
         
         // Stop sync timer IMMEDIATELY to prevent syncGameState from racing
-        // with score mutations (e.g., adding speed bonus a second time).
+        // with score mutations.
         stopSyncTimer()
         
         // Mark completed locally but defer setting game.status until after
@@ -818,9 +777,6 @@ class GameManager {
         game.completedAt = Date()
         
         let gameRecordName = game.cloudKitRecordName
-        let completionTime = Date()
-        let gameStart = gameStartTime ?? game.startedAt ?? completionTime
-        let timeElapsed = completionTime.timeIntervalSince(gameStart)
         
         // Gather all players (current + others) to determine final standings
         var allPlayerStates: [(state: PlayerGameState, isLocal: Bool)] = []
@@ -855,20 +811,6 @@ class GameManager {
                     allPlayerStates.append((ps, false))
                 }
             }
-        }
-        
-        // Apply speed bonus to final scores
-        // If this player used a time freeze, subtract 30s from their elapsed time
-        let adjustedTimeElapsed = didUseTimeFreeze ? max(0, timeElapsed - 30.0) : timeElapsed
-        for entry in allPlayerStates {
-            let ps = entry.state
-            let elapsed = entry.isLocal ? adjustedTimeElapsed : timeElapsed
-            let speedPoints = ScoringSystem.speedBonus(
-                cellsCompleted: ps.cellsCompleted.count,
-                timeElapsed: elapsed
-            )
-            ps.score += speedPoints
-            ps.score = max(0, ps.score)
         }
         
         // Save every player's final score to CloudKit
@@ -949,10 +891,9 @@ class GameManager {
             )
             engagementManager.updateChallengeProgress(event: .scoreEarned(playerState.score), profile: profile)
             
-            // Check expert solver achievement
+            // Check expert solver achievement (surfaceGameEndRewards will display it)
             if isWinner && game.difficulty == .expert && !profile.hasAchievement(.expertSolver) {
                 profile.unlockAchievement(.expertSolver)
-                engagementManager.recentAchievements.append(.expertSolver)
             }
         }
         
@@ -980,9 +921,14 @@ class GameManager {
             }
         }
         
-        // After the animation sequence completes (~6s), mark the game
-        // as completed locally so the view transitions to results.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { [weak self] in
+        // The view calls scheduleGameCompletion(afterDelay:) once it knows
+        // the total animation duration (win/loss + quicket + level-up + achievements).
+    }
+    
+    /// Transition the game to completed after the given delay (called by GameView
+    /// once it knows the total end-sequence animation duration).
+    func scheduleGameCompletion(afterDelay delay: Double) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self else { return }
             self.currentGame?.status = .completed
             self.isGameActive = false
@@ -1004,6 +950,12 @@ class GameManager {
     private func startSyncTimer() {
         // Stop any existing timer first
         stopSyncTimer()
+        // Pause non-essential CloudKit polling during gameplay to reduce contention
+        OnlineStatusService.shared.pause()
+        // Snapshot engagement state so level-ups/achievements are deferred to game end
+        if let profile = cloudKit.currentUserProfile {
+            engagementManager.snapshotGameStart(profile: profile)
+        }
         syncTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task {
                 await self?.syncGameState()
@@ -1035,15 +987,21 @@ class GameManager {
             return
         }
         
-        // Push current player's selected cell to CloudKit only when it changed
-        // and no move is currently being saved (to avoid conflicting writes)
+        // Push current player's selected cell to CloudKit in the background
+        // so it doesn't block reading other players' state
         if selectionDirty, !isMakingMove,
            let playerState = currentPlayerState,
            playerState.cloudKitRecordName != nil {
-            playerState.selectedRow = selectedCell?.row
-            playerState.selectedCol = selectedCell?.col
-            try? await cloudKit.savePlayerState(playerState, gameRecordName: gameRecordName)
+            let row = selectedCell?.row
+            let col = selectedCell?.col
+            playerState.selectedRow = row
+            playerState.selectedCol = col
             selectionDirty = false
+            let ck = cloudKit
+            let grn = gameRecordName
+            Task.detached {
+                try? await ck.savePlayerState(playerState, gameRecordName: grn)
+            }
         }
         
         do {
@@ -1473,6 +1431,9 @@ class GameManager {
         
         stopSyncTimer()
         stopLobbyPolling()
+        cloudKit.clearGameRecordCaches()
+        // Resume non-essential polling that was paused during gameplay
+        OnlineStatusService.shared.resume()
         countdownTimer?.invalidate()
         countdownTimer = nil
         countdownSeconds = nil

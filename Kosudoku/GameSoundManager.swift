@@ -234,12 +234,6 @@ final class GameSoundManager {
         playBuffer(buffer)
     }
     
-    /// Play a crystalline freeze sound
-    func playFreezeSound() {
-        guard isSetUp, let buffer = generateFreezeBuffer() else { return }
-        playBuffer(buffer)
-    }
-    
     /// Play a soft hint reveal sound
     func playHintSound() {
         guard isSetUp, let buffer = generateHintBuffer() else { return }
@@ -294,7 +288,48 @@ final class GameSoundManager {
     }
     
     /// Generates a crystalline descending tone for time freeze
-    private func generateFreezeBuffer() -> AVAudioPCMBuffer? {
+    /// Play a sound effect for a specific emote
+    func playEmoteSound(for emote: GameEmote) {
+        guard isSetUp else { return }
+        let buffer: AVAudioPCMBuffer?
+        switch emote {
+        case .gg:       buffer = generateGGBuffer()
+        case .sweat:    buffer = generateSweatBuffer()
+        case .fire:     buffer = generateFireBuffer()
+        case .flex:     buffer = generateFlexBuffer()
+        case .cool:     buffer = generateCoolBuffer()
+        case .mindBlown: buffer = generateMindBlownBuffer()
+        }
+        guard let buffer else { return }
+        playBuffer(buffer)
+    }
+    
+    // MARK: - Emote Sound Generation
+    
+    /// Quick double-tap percussion for 👏
+    private func generateGGBuffer() -> AVAudioPCMBuffer? {
+        let duration: Double = 0.35
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let data = buffer.floatChannelData?[0] else { return nil }
+        buffer.frameLength = frameCount
+        
+        for i in 0..<Int(frameCount) {
+            let t = Double(i) / sampleRate
+            let progress = Double(i) / Double(frameCount)
+            // Two quick taps at t=0 and t=0.15
+            let tap1 = t < 0.12 ? Float(exp(-t * 40.0) * 0.4) : Float(0)
+            let tap2 = t > 0.15 && t < 0.27 ? Float(exp(-(t - 0.15) * 40.0) * 0.35) : Float(0)
+            let freq1 = 1200.0 + 200.0 * progress
+            let tone = Float(sin(2.0 * .pi * freq1 * t))
+            data[i] = tone * (tap1 + tap2)
+        }
+        return buffer
+    }
+    
+    /// Descending "whomp" slide for 😅
+    private func generateSweatBuffer() -> AVAudioPCMBuffer? {
         let duration: Double = 0.4
         let frameCount = AVAudioFrameCount(sampleRate * duration)
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
@@ -305,13 +340,107 @@ final class GameSoundManager {
         for i in 0..<Int(frameCount) {
             let t = Double(i) / sampleRate
             let progress = Double(i) / Double(frameCount)
-            let envelope = Float(max(0, 1.0 - progress) * 0.35)
-            // Descending crystalline tone
-            let freq = 2000.0 - 1200.0 * progress
+            let envelope = Float(max(0, 1.0 - progress) * 0.4)
+            // Descending frequency from 600 Hz to 150 Hz
+            let freq = 600.0 - 450.0 * progress
             let tone = Float(sin(2.0 * .pi * freq * t))
-            // Add sparkle harmonics
-            let sparkle = Float(sin(2.0 * .pi * freq * 2.5 * t)) * 0.3
-            data[i] = (tone + sparkle) * envelope
+            data[i] = tone * envelope
+        }
+        return buffer
+    }
+    
+    /// Rising crackle/sizzle for 🔥
+    private func generateFireBuffer() -> AVAudioPCMBuffer? {
+        let duration: Double = 0.45
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let data = buffer.floatChannelData?[0] else { return nil }
+        buffer.frameLength = frameCount
+        
+        for i in 0..<Int(frameCount) {
+            let t = Double(i) / sampleRate
+            let progress = Double(i) / Double(frameCount)
+            let envelope = Float(sin(Double.pi * progress) * 0.35)
+            // Rising tone with noise for crackle
+            let freq = 400.0 + 800.0 * progress
+            let tone = Float(sin(2.0 * .pi * freq * t)) * 0.6
+            let noise = Float.random(in: -1...1) * 0.4 * Float(progress)
+            data[i] = (tone + noise) * envelope
+        }
+        return buffer
+    }
+    
+    /// Punchy bass hit for 💪
+    private func generateFlexBuffer() -> AVAudioPCMBuffer? {
+        let duration: Double = 0.3
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let data = buffer.floatChannelData?[0] else { return nil }
+        buffer.frameLength = frameCount
+        
+        for i in 0..<Int(frameCount) {
+            let t = Double(i) / sampleRate
+            let progress = Double(i) / Double(frameCount)
+            // Fast attack, medium decay
+            let envelope = Float(exp(-progress * 6.0) * 0.5)
+            // Low bass with a punchy transient
+            let bass = Float(sin(2.0 * .pi * 80.0 * t))
+            let transient = Float(sin(2.0 * .pi * 400.0 * t)) * Float(exp(-progress * 20.0))
+            data[i] = (bass * 0.7 + transient * 0.3) * envelope
+        }
+        return buffer
+    }
+    
+    /// Smooth two-note riff for 😎
+    private func generateCoolBuffer() -> AVAudioPCMBuffer? {
+        let duration: Double = 0.4
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let data = buffer.floatChannelData?[0] else { return nil }
+        buffer.frameLength = frameCount
+        let halfFrames = Int(frameCount / 2)
+        
+        for i in 0..<Int(frameCount) {
+            let t = Double(i) / sampleRate
+            let progress = Double(i) / Double(frameCount)
+            let envelope = Float(sin(Double.pi * progress) * 0.35)
+            // E4 → G4 (jazzy minor third)
+            let freq = i < halfFrames ? 330.0 : 392.0
+            let tone = Float(sin(2.0 * .pi * freq * t))
+            let harmonic = Float(sin(2.0 * .pi * freq * 2.0 * t)) * 0.3
+            data[i] = (tone + harmonic) * envelope
+        }
+        return buffer
+    }
+    
+    /// Ascending sweep ending in sparkle burst for 🤯
+    private func generateMindBlownBuffer() -> AVAudioPCMBuffer? {
+        let duration: Double = 0.5
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let data = buffer.floatChannelData?[0] else { return nil }
+        buffer.frameLength = frameCount
+        
+        for i in 0..<Int(frameCount) {
+            let t = Double(i) / sampleRate
+            let progress = Double(i) / Double(frameCount)
+            let envelope = Float(sin(Double.pi * progress) * 0.4)
+            // Ascending sweep from 300 Hz to 2000 Hz
+            let freq = 300.0 + 1700.0 * progress * progress
+            let sweep = Float(sin(2.0 * .pi * freq * t))
+            // Add sparkle in the last 30%
+            let sparkle: Float
+            if progress > 0.7 {
+                let sparkleProgress = (progress - 0.7) / 0.3
+                sparkle = Float(sin(2.0 * .pi * 3000.0 * t)) * Float(sparkleProgress) * 0.4
+            } else {
+                sparkle = 0
+            }
+            data[i] = (sweep + sparkle) * envelope
         }
         return buffer
     }

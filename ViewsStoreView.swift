@@ -44,11 +44,6 @@ struct StoreView: View {
                         .padding(.horizontal)
                         .padding(.top, 12)
                     
-                    // MARK: - Buy Quickets (IAP)
-                    storeSection(title: "Buy Quickets", icon: "cart.fill") {
-                        buyQuicketsSection
-                    }
-                    
                     // MARK: - Cosmetics
                     storeSection(title: "Cosmetics", icon: "paintbrush.fill") {
                         // Player Colors
@@ -202,12 +197,6 @@ struct StoreView: View {
                         )
                         sectionDivider
                         consumableRow(
-                            boost: .timeFreeze,
-                            count: profile?.timeFreezes ?? 0,
-                            onPurchase: { await purchaseConsumable(cost: 4) { $0.timeFreezes += 1 } }
-                        )
-                        sectionDivider
-                        consumableRow(
                             boost: .undoShield,
                             count: profile?.undoShields ?? 0,
                             onPurchase: { await purchaseConsumable(cost: 3) { $0.undoShields += 1 } }
@@ -250,11 +239,16 @@ struct StoreView: View {
                             Label("Win a multiplayer game to earn 1 quicket", systemImage: "trophy.fill")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
-                            Label("Purchase quickets above", systemImage: "cart.fill")
+                            Label("Purchase quickets below", systemImage: "cart.fill")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 4)
+                    }
+                    
+                    // MARK: - Buy Quickets (IAP)
+                    storeSection(title: "Buy Quickets", icon: "cart.fill") {
+                        buyQuicketsSection
                     }
                     
                     Spacer(minLength: 40)

@@ -22,6 +22,17 @@ class CloudKitService {
     var currentUserRecordName: String?
     var currentUserProfile: UserProfile?
     var isAuthenticated = false
+    
+    /// Cache for CKRecords to avoid re-fetching on every save.
+    /// Keyed by CloudKit record name. Cleared when leaving a game.
+    private var playerStateRecordCache: [String: CKRecord] = [:]
+    private var gameSessionRecordCache: [String: CKRecord] = [:]
+    
+    /// Clear cached records (call when leaving a game)
+    func clearGameRecordCaches() {
+        playerStateRecordCache.removeAll()
+        gameSessionRecordCache.removeAll()
+    }
 
     
     // Record types
@@ -129,7 +140,7 @@ class CloudKitService {
         record["ownedGameInviteThemes"] = profile.ownedGameInviteThemes as CKRecordValue?
         record["ownedPlayerColors"] = profile.ownedPlayerColors as CKRecordValue?
         record["hintTokens"] = profile.hintTokens
-        record["timeFreezes"] = profile.timeFreezes
+        
         record["undoShields"] = profile.undoShields
         record["streakSavers"] = profile.streakSavers
         record["hasExtendedStats"] = profile.hasExtendedStats ? 1 : 0
@@ -150,6 +161,7 @@ class CloudKitService {
         record["lastChallengeDate"] = profile.lastChallengeDate as CKRecordValue?
         record["lastChallengeWeek"] = profile.lastChallengeWeek as CKRecordValue?
         record["unlockedAchievements"] = profile.unlockedAchievements as CKRecordValue?
+        record["lastActiveDate"] = profile.lastActiveDate as CKRecordValue?
         
         if let avatarData = profile.avatarImageData {
             // Save avatar as asset
@@ -261,7 +273,7 @@ class CloudKitService {
         profile.ownedGameInviteThemes = record["ownedGameInviteThemes"] as? String
         profile.ownedPlayerColors = record["ownedPlayerColors"] as? String
         profile.hintTokens = (record["hintTokens"] as? Int) ?? 0
-        profile.timeFreezes = (record["timeFreezes"] as? Int) ?? 0
+        
         profile.undoShields = (record["undoShields"] as? Int) ?? 0
         profile.streakSavers = (record["streakSavers"] as? Int) ?? 0
         profile.hasExtendedStats = ((record["hasExtendedStats"] as? Int) ?? 0) != 0
@@ -282,6 +294,56 @@ class CloudKitService {
         profile.lastChallengeDate = record["lastChallengeDate"] as? String
         profile.lastChallengeWeek = record["lastChallengeWeek"] as? String
         profile.unlockedAchievements = record["unlockedAchievements"] as? String
+        profile.lastActiveDate = record["lastActiveDate"] as? Date
+    }
+    
+    /// Update only the lastActiveDate field on the current user's profile (lightweight heartbeat)
+    func updateLastActiveDate() async {
+        guard let profile = currentUserProfile,
+              let recordName = profile.cloudKitRecordName else { return }
+        do {
+            let recordID = CKRecord.ID(recordName: recordName)
+            let record = try await publicDatabase.record(for: recordID)
+            record["lastActiveDate"] = Date() as CKRecordValue
+            _ = try await publicDatabase.save(record)
+            profile.lastActiveDate = Date()
+        } catch {
+            // Non-critical — will retry next heartbeat
+        }
+    }
+    
+    /// Fetch the lastActiveDate for multiple users by their owner record names.
+    /// Returns a dictionary mapping ownerRecordName → lastActiveDate.
+    func fetchOnlineStatus(ownerRecordNames: [String]) async -> [String: Date] {
+        guard !ownerRecordNames.isEmpty else { return [:] }
+        var result: [String: Date] = [:]
+        
+        // CloudKit IN queries are limited; batch if needed
+        let batches = stride(from: 0, to: ownerRecordNames.count, by: 10).map {
+            Array(ownerRecordNames[$0..<min($0 + 10, ownerRecordNames.count)])
+        }
+        
+        for batch in batches {
+            let predicate = NSPredicate(format: "ownerRecordName IN %@", batch)
+            let query = CKQuery(recordType: RecordType.userProfile.rawValue, predicate: predicate)
+            do {
+                let (matchResults, _) = try await publicDatabase.records(
+                    matching: query,
+                    desiredKeys: ["ownerRecordName", "lastActiveDate"],
+                    resultsLimit: batch.count
+                )
+                for (_, recordResult) in matchResults {
+                    if let record = try? recordResult.get(),
+                       let owner = record["ownerRecordName"] as? String,
+                       let lastActive = record["lastActiveDate"] as? Date {
+                        result[owner] = lastActive
+                    }
+                }
+            } catch {
+                // Non-critical
+            }
+        }
+        return result
     }
     
     /// Search for users by username or display name
@@ -364,8 +426,13 @@ class CloudKitService {
             throw CloudKitError.noRecordName
         }
         
-        let recordID = CKRecord.ID(recordName: recordName)
-        let record = try await publicDatabase.record(for: recordID)
+        let record: CKRecord
+        if let cached = gameSessionRecordCache[recordName] {
+            record = cached
+        } else {
+            let recordID = CKRecord.ID(recordName: recordName)
+            record = try await publicDatabase.record(for: recordID)
+        }
         
         record["status"] = session.status.rawValue
         record["puzzleData"] = session.puzzleData
@@ -380,7 +447,23 @@ class CloudKitService {
             record["countdownStartedAt"] = countdownStartedAt
         }
         
-        _ = try await publicDatabase.save(record)
+        do {
+            let savedRecord = try await publicDatabase.save(record)
+            gameSessionRecordCache[recordName] = savedRecord
+        } catch let error as CKError where error.code == .serverRecordChanged {
+            // Conflict: fetch fresh record and retry once
+            gameSessionRecordCache.removeValue(forKey: recordName)
+            let recordID = CKRecord.ID(recordName: recordName)
+            let freshRecord = try await publicDatabase.record(for: recordID)
+            freshRecord["status"] = session.status.rawValue
+            freshRecord["puzzleData"] = session.puzzleData
+            freshRecord["declinedPlayers"] = session.declinedPlayers as CKRecordValue
+            if let startedAt = session.startedAt { freshRecord["startedAt"] = startedAt }
+            if let completedAt = session.completedAt { freshRecord["completedAt"] = completedAt }
+            if let countdownStartedAt = session.countdownStartedAt { freshRecord["countdownStartedAt"] = countdownStartedAt }
+            let savedRecord = try await publicDatabase.save(freshRecord)
+            gameSessionRecordCache[recordName] = savedRecord
+        }
     }
     
     /// Update only the status (and completedAt) of a game session in CloudKit,
@@ -500,9 +583,13 @@ class CloudKitService {
         let record: CKRecord
         
         if let existingRecordName = state.cloudKitRecordName {
-            // Update existing record
-            let recordID = CKRecord.ID(recordName: existingRecordName)
-            record = try await publicDatabase.record(for: recordID)
+            // Try cached record first to avoid a network round-trip
+            if let cached = playerStateRecordCache[existingRecordName] {
+                record = cached
+            } else {
+                let recordID = CKRecord.ID(recordName: existingRecordName)
+                record = try await publicDatabase.record(for: recordID)
+            }
         } else {
             // Before creating a new record, check if one already exists for this player+game
             // to prevent duplicates from race conditions (e.g. joinGame called twice quickly)
@@ -540,8 +627,37 @@ class CloudKitService {
         record["selectedCol"] = state.selectedCol as CKRecordValue?
         record["customColorRawValue"] = state.customColorRawValue as CKRecordValue?
         
-        let savedRecord = try await publicDatabase.save(record)
-        state.cloudKitRecordName = savedRecord.recordID.recordName
+        do {
+            let savedRecord = try await publicDatabase.save(record)
+            state.cloudKitRecordName = savedRecord.recordID.recordName
+            // Cache the saved record (it has the latest change tag)
+            playerStateRecordCache[savedRecord.recordID.recordName] = savedRecord
+        } catch let error as CKError where error.code == .serverRecordChanged {
+            // Conflict: server has a newer version. Fetch fresh, retry once.
+            if let existingRecordName = state.cloudKitRecordName {
+                playerStateRecordCache.removeValue(forKey: existingRecordName)
+                let recordID = CKRecord.ID(recordName: existingRecordName)
+                let freshRecord = try await publicDatabase.record(for: recordID)
+                freshRecord["playerRecordName"] = state.playerRecordName
+                freshRecord["playerUsername"] = state.playerUsername
+                freshRecord["currentBoardData"] = state.currentBoardData
+                freshRecord["score"] = state.score
+                freshRecord["correctGuesses"] = state.correctGuesses
+                freshRecord["incorrectGuesses"] = state.incorrectGuesses
+                freshRecord["cellsCompleted"] = state.cellsCompleted
+                freshRecord["joinedAt"] = state.joinedAt
+                if let lastMoveAt = state.lastMoveAt {
+                    freshRecord["lastMoveAt"] = lastMoveAt
+                }
+                freshRecord["selectedRow"] = state.selectedRow as CKRecordValue?
+                freshRecord["selectedCol"] = state.selectedCol as CKRecordValue?
+                freshRecord["customColorRawValue"] = state.customColorRawValue as CKRecordValue?
+                let savedRecord = try await publicDatabase.save(freshRecord)
+                playerStateRecordCache[savedRecord.recordID.recordName] = savedRecord
+            } else {
+                throw error
+            }
+        }
     }
     
     /// Subscribe to changes in a game session
@@ -777,6 +893,49 @@ class CloudKitService {
     func deleteFriendship(cloudKitRecordName: String) async throws {
         let recordID = CKRecord.ID(recordName: cloudKitRecordName)
         try await publicDatabase.deleteRecord(withID: recordID)
+    }
+    
+    // MARK: - Group Chat Management
+    
+    /// Delete all chat messages for a group chat from CloudKit
+    func deleteGroupChatMessages(groupChatID: String) async throws {
+        let predicate = NSPredicate(format: "groupChatID == %@", groupChatID)
+        let query = CKQuery(recordType: RecordType.chatMessage.rawValue, predicate: predicate)
+        
+        var recordIDsToDelete: [CKRecord.ID] = []
+        let (matchResults, _) = try await publicDatabase.records(matching: query)
+        for (_, result) in matchResults {
+            if let record = try? result.get() {
+                recordIDsToDelete.append(record.recordID)
+            }
+        }
+        
+        // Batch delete
+        if !recordIDsToDelete.isEmpty {
+            try await publicDatabase.modifyRecords(saving: [], deleting: recordIDsToDelete)
+        }
+    }
+    
+    /// Delete a group chat and all its messages from CloudKit
+    func deleteGroupChat(cloudKitRecordName: String, groupChatID: String) async throws {
+        // Delete messages first
+        try await deleteGroupChatMessages(groupChatID: groupChatID)
+        
+        // Then delete the chat itself
+        let recordID = CKRecord.ID(recordName: cloudKitRecordName)
+        try await publicDatabase.deleteRecord(withID: recordID)
+    }
+    
+    /// Remove a member from a group chat in CloudKit
+    func leaveGroupChat(cloudKitRecordName: String, memberRecordName: String) async throws {
+        let recordID = CKRecord.ID(recordName: cloudKitRecordName)
+        let record = try await publicDatabase.record(for: recordID)
+        
+        var members = (record["memberRecordNames"] as? [String]) ?? []
+        members.removeAll { $0 == memberRecordName }
+        record["memberRecordNames"] = members as CKRecordValue
+        
+        _ = try await publicDatabase.save(record)
     }
     
     // MARK: - User Discovery

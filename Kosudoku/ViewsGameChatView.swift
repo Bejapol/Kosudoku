@@ -11,6 +11,7 @@ import CloudKit
 
 struct GameChatView: View {
     let gameSession: GameSession
+    var onEmoteSent: ((GameEmote) -> Void)? = nil
     @Environment(\.modelContext) private var modelContext
     @Query private var allMessages: [ChatMessage]
     @State private var messageText = ""
@@ -231,6 +232,7 @@ struct GameChatView: View {
         do {
             try await cloudKitService.sendChatMessage(message, gameRecordName: gameRecordName)
             cloudKitMessages.append(message)
+            onEmoteSent?(emote)
         } catch {
             print("Error sending emote: \(error)")
         }

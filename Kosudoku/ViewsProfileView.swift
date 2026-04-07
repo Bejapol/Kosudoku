@@ -248,17 +248,12 @@ struct ProfileView: View {
                         }
                         
                         // Consumable counts
-                        if profile.hintTokens > 0 || profile.timeFreezes > 0 || profile.undoShields > 0 || profile.streakSavers > 0 {
+                        if profile.hintTokens > 0 || profile.undoShields > 0 || profile.streakSavers > 0 {
                             HStack(spacing: 16) {
                                 if profile.hintTokens > 0 {
                                     Label("\(profile.hintTokens)", systemImage: "lightbulb.fill")
                                         .font(.caption)
                                         .foregroundColor(.orange)
-                                }
-                                if profile.timeFreezes > 0 {
-                                    Label("\(profile.timeFreezes)", systemImage: "snowflake")
-                                        .font(.caption)
-                                        .foregroundColor(.cyan)
                                 }
                                 if profile.undoShields > 0 {
                                     Label("\(profile.undoShields)", systemImage: "shield.fill")
