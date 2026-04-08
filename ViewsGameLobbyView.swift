@@ -310,8 +310,31 @@ struct GameLobbyView: View {
     // MARK: - Emote Polling
     
     private func startEmotePolling() {
+        // Seed seen emotes so we don't replay historical ones on first poll
+        Task { await seedSeenEmotes() }
         emoteTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             Task { await fetchEmotes() }
+        }
+    }
+    
+    private func seedSeenEmotes() async {
+        guard let gameRecordName = gameManager.currentGame?.cloudKitRecordName else { return }
+        
+        do {
+            let records = try await cloudKitService.fetchChatMessages(gameRecordName: gameRecordName)
+            for record in records {
+                guard let messageTypeRaw = record["messageType"] as? String,
+                      messageTypeRaw == "reaction",
+                      let senderRecordName = record["senderRecordName"] as? String,
+                      let content = record["content"] as? String else {
+                    continue
+                }
+                let timestamp = (record["timestamp"] as? Date) ?? Date()
+                let stableKey = "\(senderRecordName)|\(content)|\(Int(timestamp.timeIntervalSince1970))"
+                seenEmoteIDs.insert(stableKey)
+            }
+        } catch {
+            // Silently ignore — first poll will still work, just might replay old emotes
         }
     }
     
@@ -423,6 +446,8 @@ struct LobbyPlayerRow: View {
     
     @State private var profileImageData: Data?
     @State private var rankTier: RankTier?
+    @State private var profileFrame: ProfileFrame?
+    @State private var showingProfile = false
     @State private var cloudKitService = CloudKitService.shared
     
     /// The accent color: use the player's game color if available, otherwise fall back to status-based color
@@ -441,7 +466,8 @@ struct LobbyPlayerRow: View {
             ProfilePhotoView(
                 imageData: profileImageData,
                 displayName: name,
-                size: 40
+                size: 40,
+                profileFrame: profileFrame
             )
             .overlay(alignment: .bottomTrailing) {
                 OnlineStatusIndicator(ownerRecordName: ownerRecordName)
@@ -482,6 +508,11 @@ struct LobbyPlayerRow: View {
         .padding(12)
         .background(Color(.systemGray6))
         .cornerRadius(10)
+        .contentShape(Rectangle())
+        .onTapGesture { showingProfile = true }
+        .sheet(isPresented: $showingProfile) {
+            PlayerProfileView(ownerRecordName: ownerRecordName)
+        }
         .task {
             await loadProfilePhoto()
         }
@@ -523,6 +554,7 @@ struct LobbyPlayerRow: View {
     
     private static var photoCache: [String: Data] = [:]
     private static var rankCache: [String: RankTier] = [:]
+    private static var frameCache: [String: ProfileFrame] = [:]
     
     private func loadProfilePhoto() async {
         if let cached = Self.photoCache[ownerRecordName] {
@@ -530,6 +562,9 @@ struct LobbyPlayerRow: View {
         }
         if let cachedRank = Self.rankCache[ownerRecordName] {
             rankTier = cachedRank
+        }
+        if let cachedFrame = Self.frameCache[ownerRecordName] {
+            profileFrame = cachedFrame
         }
         if Self.photoCache[ownerRecordName] != nil {
             return
@@ -540,10 +575,12 @@ struct LobbyPlayerRow: View {
            let currentProfile = cloudKitService.currentUserProfile {
             profileImageData = currentProfile.avatarImageData
             rankTier = currentProfile.rankTier
+            profileFrame = currentProfile.activeProfileFrame
             if let data = currentProfile.avatarImageData {
                 Self.photoCache[ownerRecordName] = data
             }
             Self.rankCache[ownerRecordName] = currentProfile.rankTier
+            Self.frameCache[ownerRecordName] = currentProfile.activeProfileFrame
             return
         }
         
@@ -552,10 +589,12 @@ struct LobbyPlayerRow: View {
             if let profile = try await cloudKitService.fetchUserProfileByOwner(ownerRecordName: ownerRecordName) {
                 profileImageData = profile.avatarImageData
                 rankTier = profile.rankTier
+                profileFrame = profile.activeProfileFrame
                 if let data = profile.avatarImageData {
                     Self.photoCache[ownerRecordName] = data
                 }
                 Self.rankCache[ownerRecordName] = profile.rankTier
+                Self.frameCache[ownerRecordName] = profile.activeProfileFrame
             }
         } catch {
             print("Failed to load profile photo for \(name): \(error)")

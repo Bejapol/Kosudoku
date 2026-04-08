@@ -70,6 +70,10 @@ class GameManager {
     private var isMakingMove = false
     private var isJoining = false
     
+    /// Tracks the moment the app entered the foreground while a game is active.
+    /// Used together with `GameSession.activePlayTime` to accumulate only active play time.
+    private var foregroundSince: Date?
+    
     // MARK: - Boost State (per game)
     
     /// Whether the player has used their hint token this game
@@ -389,10 +393,14 @@ class GameManager {
                     gameSession: game
                 )
                 state.joinedAt = (record["joinedAt"] as? Date) ?? Date()
+                state.customColorRawValue = record["customColorRawValue"] as? Int
                 accepted.append(state)
             }
             
             acceptedPlayers = accepted
+            
+            // Recompute color map from accepted players so lobby shows correct colors
+            playerColorMap = PlayerColorAssigner.assign(players: accepted)
             
             // Auto-start countdown: only the host triggers to avoid race conditions
             guard game.hostRecordName == cloudKit.currentUserRecordName else { return }
@@ -607,6 +615,30 @@ class GameManager {
             } catch {
                 print("⚠️ CloudKit sync after move failed (will retry on next sync): \(error.localizedDescription)")
             }
+            
+            // Post-save verification: re-fetch the authoritative board from CloudKit
+            // to resolve races where two players claim the same cell simultaneously.
+            // If the other player's write won, revert our local credit for that cell.
+            if isCorrect {
+                if let verifyRecord = try? await cloudKit.fetchGameSession(recordName: gameRecordName),
+                   let verifyData = verifyRecord["puzzleData"] as? String,
+                   let verifyBoard = SudokuBoard.fromJSONString(verifyData) {
+                    let serverCompletedBy = verifyBoard[row, col].completedBy
+                    if let serverCompletedBy,
+                       serverCompletedBy != playerState.playerRecordName {
+                        // Another player's write won this cell — revert our credit
+                        board[row, col].completedBy = serverCompletedBy
+                        currentBoard = board
+                        playerState.correctGuesses -= 1
+                        playerState.cellsCompleted.removeAll { $0 == "\(row)-\(col)" }
+                        playerState.score -= ScoringSystem.pointsForCorrectGuess(difficulty: game.difficulty)
+                        playerState.currentBoardData = board.toJSONString()
+                        game.puzzleData = board.toJSONString()
+                        try? modelContext.save()
+                        try? await cloudKit.savePlayerState(playerState, gameRecordName: gameRecordName)
+                    }
+                }
+            }
         }
         
         // Check if board is complete
@@ -771,6 +803,9 @@ class GameManager {
         // with score mutations.
         stopSyncTimer()
         
+        // Flush remaining active play time before marking complete
+        pauseActiveTimeTracking()
+        
         // Mark completed locally but defer setting game.status until after
         // gameEndResult is set, so the view doesn't switch away before
         // the end-game overlay can trigger.
@@ -841,10 +876,11 @@ class GameManager {
             }
         }
         let result: GameEndResult = isWinner ? .won : .lost
+        playerState.didWin = isWinner
         
         // Update user profile stats (use the already-updated playerState.score)
         // Guard against double-counting if completeGame fires from multiple paths.
-        let isSoloGame = allPlayerStates.count <= 1
+        let isSoloGame = game.invitedPlayers.isEmpty
         if !hasAppliedEndGameStats, let profile = cloudKit.currentUserProfile {
             hasAppliedEndGameStats = true
             profile.totalScore += playerState.score
@@ -885,10 +921,12 @@ class GameManager {
             // Track challenge progress
             let usedHint = hasUsedHintToken
             engagementManager.updateChallengeProgress(event: .gamePlayed, profile: profile)
-            engagementManager.updateChallengeProgress(
-                event: .gameWon(difficulty: game.difficulty, usedHint: usedHint, isMultiplayer: !isSoloGame),
-                profile: profile
-            )
+            if isWinner {
+                engagementManager.updateChallengeProgress(
+                    event: .gameWon(difficulty: game.difficulty, usedHint: usedHint, isMultiplayer: !isSoloGame),
+                    profile: profile
+                )
+            }
             engagementManager.updateChallengeProgress(event: .scoreEarned(playerState.score), profile: profile)
             
             // Check expert solver achievement (surfaceGameEndRewards will display it)
@@ -956,6 +994,8 @@ class GameManager {
         if let profile = cloudKit.currentUserProfile {
             engagementManager.snapshotGameStart(profile: profile)
         }
+        // Start tracking active play time
+        resumeActiveTimeTracking()
         syncTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task {
                 await self?.syncGameState()
@@ -973,6 +1013,32 @@ class GameManager {
     private func stopSyncTimer() {
         syncTimer?.invalidate()
         syncTimer = nil
+    }
+    
+    // MARK: - Active Play Time Tracking
+    
+    /// Begin tracking foreground time for the current game.
+    func resumeActiveTimeTracking() {
+        guard isGameActive, foregroundSince == nil else { return }
+        foregroundSince = Date()
+    }
+    
+    /// Pause tracking and accumulate elapsed foreground time into the game session.
+    func pauseActiveTimeTracking() {
+        guard let since = foregroundSince else { return }
+        let elapsed = Date().timeIntervalSince(since)
+        foregroundSince = nil
+        currentGame?.activePlayTime += elapsed
+        try? modelContext.save()
+    }
+    
+    /// Current total active play time including any in-progress foreground session.
+    var currentActivePlayTime: TimeInterval {
+        let stored = currentGame?.activePlayTime ?? 0
+        if let since = foregroundSince {
+            return stored + Date().timeIntervalSince(since)
+        }
+        return stored
     }
     
     private func syncGameState() async {
@@ -1145,6 +1211,9 @@ class GameManager {
                game.status != .completed {
                 game.completedAt = gameRecord["completedAt"] as? Date
                 
+                // Flush remaining active play time
+                pauseActiveTimeTracking()
+                
                 // Stop sync timer first to prevent further syncs
                 stopSyncTimer()
 
@@ -1230,18 +1299,60 @@ class GameManager {
                         }
                     }
                     
-                    let isSoloGame = freshData.isEmpty
+                    playerState.didWin = isWinner
+                    
+                    let isSoloGame = game.invitedPlayers.isEmpty
                     if !hasAppliedEndGameStats, let profile = cloudKit.currentUserProfile {
                         hasAppliedEndGameStats = true
                         profile.totalScore += playerState.score
                         profile.gamesPlayed += 1
                         if isWinner {
                             profile.gamesWon += 1
+                            // Win streak
+                            profile.currentWinStreak += 1
+                            profile.bestWinStreak = max(profile.bestWinStreak, profile.currentWinStreak)
                             // Award +1 quicket for winning a multiplayer game only
                             if !isSoloGame {
                                 profile.quickets += 1
                             }
+                        } else {
+                            // Loss — check streak saver before resetting
+                            if profile.streakSavers > 0 && profile.currentWinStreak > 0 && !isSoloGame {
+                                profile.streakSavers -= 1
+                            } else {
+                                profile.currentWinStreak = 0
+                            }
                         }
+                        
+                        // Engagement: award game completion XP
+                        let isFirstGameToday = profile.isFirstGameToday
+                        let completionXP = ScoringSystem.xpForGameCompletion(isWin: isWinner, isMultiplayer: !isSoloGame)
+                        engagementManager.awardXP(completionXP, profile: profile, isFirstGameOfDay: isFirstGameToday)
+                        
+                        // Engagement: award/deduct RP for ranked multiplayer
+                        if !isSoloGame {
+                            engagementManager.awardRP(isWin: isWinner, opponentAvgRP: 0, profile: profile)
+                        }
+                        
+                        // Mark first game of day
+                        profile.lastGameCompletedDate = Date()
+                        
+                        // Track challenge progress
+                        let usedHint = hasUsedHintToken
+                        engagementManager.updateChallengeProgress(event: .gamePlayed, profile: profile)
+                        if isWinner {
+                            engagementManager.updateChallengeProgress(
+                                event: .gameWon(difficulty: game.difficulty, usedHint: usedHint, isMultiplayer: !isSoloGame),
+                                profile: profile
+                            )
+                        }
+                        engagementManager.updateChallengeProgress(event: .scoreEarned(playerState.score), profile: profile)
+                        
+                        // Check expert solver achievement
+                        if isWinner && game.difficulty == .expert && !profile.hasAchievement(.expertSolver) {
+                            profile.unlockAchievement(.expertSolver)
+                        }
+                        
                         try? await cloudKit.saveUserProfile(profile)
                     }
                     
@@ -1449,6 +1560,7 @@ class GameManager {
         gameStartTime = nil
         gameEndResult = nil
         hasAppliedEndGameStats = false
+        foregroundSince = nil
     }
     
     /// Check if the current user is the only player in the game

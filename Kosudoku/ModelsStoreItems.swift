@@ -300,12 +300,14 @@ enum ConsumableBoost: String, CaseIterable {
     case hintToken = "hintToken"
     case undoShield = "undoShield"
     case streakSaver = "streakSaver"
+    case loginStreakSaver = "loginStreakSaver"
     
     var displayName: String {
         switch self {
         case .hintToken: return "Hint Token"
         case .undoShield: return "Undo Shield"
         case .streakSaver: return "Streak Saver"
+        case .loginStreakSaver: return "Login Streak Saver"
         }
     }
     
@@ -314,6 +316,7 @@ enum ConsumableBoost: String, CaseIterable {
         case .hintToken: return "Reveals one correct cell in multiplayer. Limit 1 per game."
         case .undoShield: return "Blocks the penalty from your next wrong move. Limit 1 per game."
         case .streakSaver: return "Preserves your win streak after a loss. Auto-activates."
+        case .loginStreakSaver: return "Preserves your login streak if you miss a day. Auto-activates."
         }
     }
     
@@ -322,6 +325,7 @@ enum ConsumableBoost: String, CaseIterable {
         case .hintToken: return 3
         case .undoShield: return 3
         case .streakSaver: return 5
+        case .loginStreakSaver: return 5
         }
     }
     
@@ -330,6 +334,7 @@ enum ConsumableBoost: String, CaseIterable {
         case .hintToken: return "lightbulb.fill"
         case .undoShield: return "shield.fill"
         case .streakSaver: return "flame.fill"
+        case .loginStreakSaver: return "calendar.badge.checkmark"
         }
     }
 }

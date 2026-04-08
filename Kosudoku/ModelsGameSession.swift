@@ -50,6 +50,9 @@ final class GameSession {
     // Countdown sync timestamp — set when all players accept (or host force-starts)
     var countdownStartedAt: Date?
     
+    // Accumulated active play time (seconds the app was in the foreground during gameplay)
+    var activePlayTime: TimeInterval = 0
+    
     init(hostRecordName: String, difficulty: DifficultyLevel, puzzleData: String, solutionData: String, invitedPlayers: [String] = []) {
         self.id = UUID()
         self.createdAt = Date()

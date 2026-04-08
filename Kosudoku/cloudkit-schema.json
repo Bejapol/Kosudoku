@@ -108,6 +108,10 @@
           "type": "INT64"
         },
         {
+          "name": "loginStreakSavers",
+          "type": "INT64"
+        },
+        {
           "name": "hasExtendedStats",
           "type": "INT64"
         },

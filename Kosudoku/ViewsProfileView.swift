@@ -248,7 +248,7 @@ struct ProfileView: View {
                         }
                         
                         // Consumable counts
-                        if profile.hintTokens > 0 || profile.undoShields > 0 || profile.streakSavers > 0 {
+                        if profile.hintTokens > 0 || profile.undoShields > 0 || profile.streakSavers > 0 || profile.loginStreakSavers > 0 {
                             HStack(spacing: 16) {
                                 if profile.hintTokens > 0 {
                                     Label("\(profile.hintTokens)", systemImage: "lightbulb.fill")
@@ -264,6 +264,11 @@ struct ProfileView: View {
                                     Label("\(profile.streakSavers)", systemImage: "flame.fill")
                                         .font(.caption)
                                         .foregroundColor(.red)
+                                }
+                                if profile.loginStreakSavers > 0 {
+                                    Label("\(profile.loginStreakSavers)", systemImage: "calendar.badge.checkmark")
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
                                 }
                             }
                         }

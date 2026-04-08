@@ -232,9 +232,13 @@ struct ExtendedStatsView: View {
         myStates.compactMap { state in
             guard let gid = state.gameSessionID,
                   let game = gameMap[gid],
-                  let started = game.startedAt,
-                  let completed = game.completedAt else { return nil }
-            return completed.timeIntervalSince(started)
+                  game.completedAt != nil else { return nil }
+            // Use active play time if tracked, fall back to wall-clock for older games
+            let time = game.activePlayTime > 0 ? game.activePlayTime : {
+                guard let started = game.startedAt, let completed = game.completedAt else { return 0.0 }
+                return completed.timeIntervalSince(started)
+            }()
+            return time > 0 ? time : nil
         }
     }
     
@@ -247,9 +251,12 @@ struct ExtendedStatsView: View {
         for state in myStates {
             guard let gid = state.gameSessionID,
                   let game = gameMap[gid],
-                  let started = game.startedAt,
-                  let completed = game.completedAt else { continue }
-            let time = completed.timeIntervalSince(started)
+                  game.completedAt != nil else { continue }
+            let time = game.activePlayTime > 0 ? game.activePlayTime : {
+                guard let started = game.startedAt, let completed = game.completedAt else { return 0.0 }
+                return completed.timeIntervalSince(started)
+            }()
+            guard time > 0 else { continue }
             result[game.difficulty, default: []].append(time)
         }
         return result.mapValues { times in
@@ -263,21 +270,7 @@ struct ExtendedStatsView: View {
     }
     
     private func winsForDifficulty(_ difficulty: DifficultyLevel) -> Int {
-        guard currentRecordName != nil else { return 0 }
-        // We can't easily determine per-difficulty wins without additional tracking,
-        // so we estimate based on score rankings in completed games
-        let games = completedGames.filter { $0.difficulty == difficulty }
-        var wins = 0
-        for game in games {
-            let states = allPlayerStates.filter { $0.gameSessionID == game.id }
-            if let myState = states.first(where: { $0.playerRecordName == currentRecordName }) {
-                let maxScore = states.map(\.score).max() ?? 0
-                if myState.score == maxScore {
-                    wins += 1
-                }
-            }
-        }
-        return wins
+        statesForDifficulty(difficulty).filter { $0.didWin == true }.count
     }
     
     private func formatTime(_ time: TimeInterval) -> String {

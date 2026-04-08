@@ -19,6 +19,7 @@ struct HomeView: View {
     @State private var showingError = false
     @State private var showingProfileSetup = false
     @State private var cloudKitService = CloudKitService.shared
+    @State private var inviteTimer: Timer?
     @Query private var gameSessions: [GameSession]
     @Query private var friendships: [Friendship]
     
@@ -264,6 +265,10 @@ struct HomeView: View {
         }
         .onAppear {
             setupGameManager()
+            startInvitePolling()
+        }
+        .onDisappear {
+            stopInvitePolling()
         }
         .task {
             await syncInvitedGames()
@@ -320,6 +325,18 @@ struct HomeView: View {
         if gameManager == nil {
             gameManager = GameManager(modelContext: modelContext)
         }
+    }
+    
+    private func startInvitePolling() {
+        stopInvitePolling()
+        inviteTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+            Task { await syncInvitedGames() }
+        }
+    }
+    
+    private func stopInvitePolling() {
+        inviteTimer?.invalidate()
+        inviteTimer = nil
     }
     
     /// Fetch games the current user is invited to from CloudKit and insert them locally

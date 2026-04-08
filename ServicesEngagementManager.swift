@@ -50,6 +50,10 @@ class EngagementManager {
             if lastDay == calendar.startOfDay(for: yesterday) {
                 // Consecutive day
                 profile.loginStreak += 1
+            } else if profile.loginStreakSavers > 0 && profile.loginStreak > 0 {
+                // Missed day(s) but login streak saver preserves the streak
+                profile.loginStreakSavers -= 1
+                profile.loginStreak += 1
             } else {
                 // Streak broken
                 profile.loginStreak = 1

@@ -143,6 +143,7 @@ class CloudKitService {
         
         record["undoShields"] = profile.undoShields
         record["streakSavers"] = profile.streakSavers
+        record["loginStreakSavers"] = profile.loginStreakSavers
         record["hasExtendedStats"] = profile.hasExtendedStats ? 1 : 0
         record["hasEmotePack"] = profile.hasEmotePack ? 1 : 0
         record["currentWinStreak"] = profile.currentWinStreak
@@ -276,6 +277,7 @@ class CloudKitService {
         
         profile.undoShields = (record["undoShields"] as? Int) ?? 0
         profile.streakSavers = (record["streakSavers"] as? Int) ?? 0
+        profile.loginStreakSavers = (record["loginStreakSavers"] as? Int) ?? 0
         profile.hasExtendedStats = ((record["hasExtendedStats"] as? Int) ?? 0) != 0
         profile.hasEmotePack = ((record["hasEmotePack"] as? Int) ?? 0) != 0
         profile.currentWinStreak = (record["currentWinStreak"] as? Int) ?? 0
@@ -451,12 +453,43 @@ class CloudKitService {
             let savedRecord = try await publicDatabase.save(record)
             gameSessionRecordCache[recordName] = savedRecord
         } catch let error as CKError where error.code == .serverRecordChanged {
-            // Conflict: fetch fresh record and retry once
+            // Conflict: fetch fresh record and merge puzzleData before retrying.
+            // This prevents one player's cell completions from overwriting another's.
             gameSessionRecordCache.removeValue(forKey: recordName)
             let recordID = CKRecord.ID(recordName: recordName)
             let freshRecord = try await publicDatabase.record(for: recordID)
             freshRecord["status"] = session.status.rawValue
-            freshRecord["puzzleData"] = session.puzzleData
+            
+            // Merge puzzleData: the server may have cells completed by other players
+            // that our local board doesn't know about yet. Keep the server's completedBy
+            // for any cell it already has, and layer our new completions on top.
+            let mergedPuzzleData: String
+            if let serverPuzzleData = freshRecord["puzzleData"] as? String,
+               let serverBoard = SudokuBoard.fromJSONString(serverPuzzleData),
+               let localBoard = SudokuBoard.fromJSONString(session.puzzleData) {
+                var merged = serverBoard
+                for r in 0..<9 {
+                    for c in 0..<9 {
+                        let serverCell = serverBoard[r, c]
+                        let localCell = localBoard[r, c]
+                        // If server already has a completedBy, keep it (first writer wins)
+                        if serverCell.completedBy != nil {
+                            continue
+                        }
+                        // If local has a new completion, apply it
+                        if localCell.completedBy != nil {
+                            merged[r, c] = localCell
+                        } else if localCell.value != nil && serverCell.value == nil {
+                            merged[r, c] = localCell
+                        }
+                    }
+                }
+                mergedPuzzleData = merged.toJSONString()
+            } else {
+                mergedPuzzleData = session.puzzleData
+            }
+            freshRecord["puzzleData"] = mergedPuzzleData
+            
             freshRecord["declinedPlayers"] = session.declinedPlayers as CKRecordValue
             if let startedAt = session.startedAt { freshRecord["startedAt"] = startedAt }
             if let completedAt = session.completedAt { freshRecord["completedAt"] = completedAt }

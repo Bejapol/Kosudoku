@@ -13,11 +13,13 @@ struct ChatMessageBubble: View {
     let message: ChatMessage
     let isCurrentUser: Bool
     @State private var profileImageData: Data?
+    @State private var profileFrame: ProfileFrame?
     @State private var cloudKitService = CloudKitService.shared
     @State private var showingProfile = false
     
-    // Static cache so profile photos persist across view recreations during polling
+    // Static cache so profile data persists across view recreations during polling
     private static var photoCache: [String: Data] = [:]
+    private static var frameCache: [String: ProfileFrame] = [:]
     
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
@@ -26,7 +28,8 @@ struct ChatMessageBubble: View {
                 ProfilePhotoView(
                     imageData: profileImageData,
                     displayName: message.senderUsername,
-                    size: 32
+                    size: 32,
+                    profileFrame: profileFrame
                 )
                 .onTapGesture { showingProfile = true }
             }
@@ -57,7 +60,8 @@ struct ChatMessageBubble: View {
                 ProfilePhotoView(
                     imageData: profileImageData,
                     displayName: message.senderUsername,
-                    size: 32
+                    size: 32,
+                    profileFrame: profileFrame
                 )
                 .onTapGesture { showingProfile = true }
             }
@@ -78,15 +82,22 @@ struct ChatMessageBubble: View {
             if profileImageData == nil {
                 profileImageData = cached
             }
+        }
+        if let cachedFrame = Self.frameCache[message.senderRecordName] {
+            profileFrame = cachedFrame
+        }
+        if Self.photoCache[message.senderRecordName] != nil {
             return
         }
         
         // If it's the current user, use their local profile
         if isCurrentUser, let currentProfile = cloudKitService.currentUserProfile {
             profileImageData = currentProfile.avatarImageData
+            profileFrame = currentProfile.activeProfileFrame
             if let data = currentProfile.avatarImageData {
                 Self.photoCache[message.senderRecordName] = data
             }
+            Self.frameCache[message.senderRecordName] = currentProfile.activeProfileFrame
             return
         }
         
@@ -94,9 +105,11 @@ struct ChatMessageBubble: View {
         do {
             if let profile = try await cloudKitService.fetchUserProfileByOwner(ownerRecordName: message.senderRecordName) {
                 profileImageData = profile.avatarImageData
+                profileFrame = profile.activeProfileFrame
                 if let data = profile.avatarImageData {
                     Self.photoCache[message.senderRecordName] = data
                 }
+                Self.frameCache[message.senderRecordName] = profile.activeProfileFrame
             }
         } catch {
             print("Failed to load profile photo for \(message.senderUsername): \(error)")

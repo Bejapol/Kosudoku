@@ -362,10 +362,14 @@ struct FriendRow: View {
     let otherRecordName: String
     @State private var showingProfile = false
     @State private var profileImageData: Data?
+    @State private var profileFrame: ProfileFrame?
+    @State private var rankTier: RankTier?
     @State private var cloudKitService = CloudKitService.shared
     
-    // Static cache for friend profile photos
+    // Static cache for friend profile data
     private static var photoCache: [String: Data] = [:]
+    private static var frameCache: [String: ProfileFrame] = [:]
+    private static var rankCache: [String: RankTier] = [:]
     
     var body: some View {
         Button {
@@ -375,15 +379,22 @@ struct FriendRow: View {
                 ProfilePhotoView(
                     imageData: profileImageData,
                     displayName: friendship.friendDisplayName,
-                    size: 40
+                    size: 40,
+                    profileFrame: profileFrame
                 )
                 .overlay(alignment: .bottomTrailing) {
                     OnlineStatusIndicator(ownerRecordName: otherRecordName)
                 }
                 
                 VStack(alignment: .leading) {
-                    Text(friendship.friendDisplayName)
-                        .font(.headline)
+                    HStack(spacing: 4) {
+                        Text(friendship.friendDisplayName)
+                            .font(.headline)
+                        
+                        if let tier = rankTier {
+                            RankTierBadge(tier: tier, showLabel: false, size: 12)
+                        }
+                    }
                     Text("@\(friendship.friendUsername)")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -404,14 +415,26 @@ struct FriendRow: View {
     private func loadPhoto() async {
         if let cached = Self.photoCache[otherRecordName] {
             if profileImageData == nil { profileImageData = cached }
+        }
+        if let cachedFrame = Self.frameCache[otherRecordName] {
+            profileFrame = cachedFrame
+        }
+        if let cachedRank = Self.rankCache[otherRecordName] {
+            rankTier = cachedRank
+        }
+        if Self.photoCache[otherRecordName] != nil {
             return
         }
         do {
             if let profile = try await cloudKitService.fetchUserProfileByOwner(ownerRecordName: otherRecordName) {
                 profileImageData = profile.avatarImageData
+                profileFrame = profile.activeProfileFrame
+                rankTier = profile.rankTier
                 if let data = profile.avatarImageData {
                     Self.photoCache[otherRecordName] = data
                 }
+                Self.frameCache[otherRecordName] = profile.activeProfileFrame
+                Self.rankCache[otherRecordName] = profile.rankTier
             }
         } catch {
             print("Failed to load friend photo: \(error)")

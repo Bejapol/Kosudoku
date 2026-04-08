@@ -52,6 +52,7 @@ final class UserProfile {
     var hintTokens: Int = 0
     var undoShields: Int = 0
     var streakSavers: Int = 0
+    var loginStreakSavers: Int = 0
     
     // MARK: - One-Time Unlocks
     

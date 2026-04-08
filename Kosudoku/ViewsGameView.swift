@@ -384,9 +384,15 @@ struct GameView: View {
         }
         
         .onChange(of: scenePhase) { _, newPhase in
-            // Sync immediately when returning from background
-            if newPhase == .active && !isViewingCompleted {
+            if isViewingCompleted { return }
+            switch newPhase {
+            case .active:
+                gameManager.resumeActiveTimeTracking()
                 gameManager.triggerSync()
+            case .inactive, .background:
+                gameManager.pauseActiveTimeTracking()
+            @unknown default:
+                break
             }
         }
     }
@@ -467,8 +473,34 @@ struct GameView: View {
     // MARK: - Emote Polling
     
     private func startEmotePolling() {
+        // Seed seenEmoteIDs with existing emotes so we don't replay history
+        Task { await seedSeenEmotes() }
         emoteTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             Task { await fetchEmotes() }
+        }
+    }
+    
+    /// Fetch all existing reaction messages and mark them as seen
+    /// without animating, so only truly new emotes trigger the overlay.
+    private func seedSeenEmotes() async {
+        guard let gameRecordName = gameManager.currentGame?.cloudKitRecordName else { return }
+        let cloudKit = CloudKitService.shared
+        
+        do {
+            let records = try await cloudKit.fetchChatMessages(gameRecordName: gameRecordName)
+            for record in records {
+                guard let messageTypeRaw = record["messageType"] as? String,
+                      messageTypeRaw == "reaction",
+                      let senderRecordName = record["senderRecordName"] as? String,
+                      let content = record["content"] as? String else {
+                    continue
+                }
+                let timestamp = (record["timestamp"] as? Date) ?? Date()
+                let stableKey = "\(senderRecordName)|\(content)|\(Int(timestamp.timeIntervalSince1970))"
+                seenEmoteIDs.insert(stableKey)
+            }
+        } catch {
+            // Non-critical — if seeding fails, the first poll may replay some emotes
         }
     }
     
@@ -629,10 +661,8 @@ struct CompletedGameResultsView: View {
             .padding(.horizontal)
             
             // Game info
-            if let game,
-               let startedAt = game.startedAt,
-               let completedAt = game.completedAt {
-                let elapsed = Int(completedAt.timeIntervalSince(startedAt))
+            if let game {
+                let elapsed = Int(game.activePlayTime)
                 let minutes = elapsed / 60
                 let seconds = elapsed % 60
                 HStack(spacing: 20) {
@@ -783,8 +813,12 @@ struct ScoreBreakdownView: View {
         player.correctGuesses * pointsPerCorrect
     }
     
+    private var pointsPerIncorrect: Int {
+        ScoringSystem.pointsForIncorrectGuess(difficulty: difficulty)
+    }
+    
     private var incorrectTotal: Int {
-        player.incorrectGuesses * ScoringSystem.incorrectGuessPenalty
+        player.incorrectGuesses * pointsPerIncorrect
     }
     
     private var computedTotal: Int {
@@ -820,7 +854,7 @@ struct ScoreBreakdownView: View {
                     
                     breakdownRow(
                         label: "Incorrect guesses",
-                        detail: "\(player.incorrectGuesses) × \(ScoringSystem.incorrectGuessPenalty) pts",
+                        detail: "\(player.incorrectGuesses) × \(pointsPerIncorrect) pts (\(difficulty.rawValue.capitalized))",
                         value: incorrectTotal > 0 ? -incorrectTotal : 0,
                         isPositive: false
                     )
@@ -891,8 +925,8 @@ struct GameHeaderView: View {
             
             Spacer()
             
-            if let startTime = gameManager.gameStartTime {
-                TimeElapsedView(startTime: startTime)
+            if gameManager.gameStartTime != nil {
+                TimeElapsedView(gameManager: gameManager)
             }
             
             Spacer()
@@ -913,8 +947,8 @@ struct GameHeaderView: View {
 }
 
 struct TimeElapsedView: View {
-    let startTime: Date
-    @State private var currentTime = Date()
+    let gameManager: GameManager
+    @State private var tick = Date()
     
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
@@ -923,14 +957,15 @@ struct TimeElapsedView: View {
             .font(.title2)
             .monospacedDigit()
             .onReceive(timer) { _ in
-                currentTime = Date()
+                tick = Date() // triggers re-evaluation of timeString
             }
     }
     
     private var timeString: String {
-        let elapsed = currentTime.timeIntervalSince(startTime)
-        let minutes = Int(elapsed) / 60
-        let seconds = Int(elapsed) % 60
+        _ = tick // read to create dependency
+        let elapsed = Int(gameManager.currentActivePlayTime)
+        let minutes = elapsed / 60
+        let seconds = elapsed % 60
         return String(format: "%02d:%02d", minutes, seconds)
     }
 }

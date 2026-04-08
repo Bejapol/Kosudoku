@@ -207,6 +207,12 @@ struct StoreView: View {
                             count: profile?.streakSavers ?? 0,
                             onPurchase: { await purchaseConsumable(cost: 5) { $0.streakSavers += 1 } }
                         )
+                        sectionDivider
+                        consumableRow(
+                            boost: .loginStreakSaver,
+                            count: profile?.loginStreakSavers ?? 0,
+                            onPurchase: { await purchaseConsumable(cost: 5) { $0.loginStreakSavers += 1 } }
+                        )
                     }
                     
                     // MARK: - Social

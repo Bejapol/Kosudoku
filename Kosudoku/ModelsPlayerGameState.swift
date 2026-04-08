@@ -35,6 +35,9 @@ final class PlayerGameState {
     /// Custom color purchased from the store (nil = use auto-assigned)
     var customColorRawValue: Int?
     
+    /// Whether this player won the game (nil = game not yet completed)
+    var didWin: Bool?
+    
     // CloudKit record name for updating the existing record
     var cloudKitRecordName: String?
     
