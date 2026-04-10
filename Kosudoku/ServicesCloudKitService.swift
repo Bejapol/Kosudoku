@@ -139,11 +139,23 @@ class CloudKitService {
         record["ownedTitleBadges"] = profile.ownedTitleBadges as CKRecordValue?
         record["ownedGameInviteThemes"] = profile.ownedGameInviteThemes as CKRecordValue?
         record["ownedPlayerColors"] = profile.ownedPlayerColors as CKRecordValue?
+        record["equippedNumberFont"] = profile.equippedNumberFont as CKRecordValue?
+        record["equippedSoundPack"] = profile.equippedSoundPack as CKRecordValue?
+        record["equippedChatBubbleStyle"] = profile.equippedChatBubbleStyle as CKRecordValue?
+        record["equippedProfileBanner"] = profile.equippedProfileBanner as CKRecordValue?
+        record["ownedNumberFonts"] = profile.ownedNumberFonts as CKRecordValue?
+        record["ownedSoundPacks"] = profile.ownedSoundPacks as CKRecordValue?
+        record["ownedChatBubbleStyles"] = profile.ownedChatBubbleStyles as CKRecordValue?
+        record["ownedProfileBanners"] = profile.ownedProfileBanners as CKRecordValue?
+        record["ownedEmotePacks"] = profile.ownedEmotePacks as CKRecordValue?
+        record["profileBio"] = profile.profileBio as CKRecordValue?
         record["hintTokens"] = profile.hintTokens
         
         record["undoShields"] = profile.undoShields
         record["streakSavers"] = profile.streakSavers
         record["loginStreakSavers"] = profile.loginStreakSavers
+        record["doubleXPTokens"] = profile.doubleXPTokens
+        record["doubleXPActiveUntil"] = profile.doubleXPActiveUntil as CKRecordValue?
         record["hasExtendedStats"] = profile.hasExtendedStats ? 1 : 0
         record["hasEmotePack"] = profile.hasEmotePack ? 1 : 0
         record["currentWinStreak"] = profile.currentWinStreak
@@ -273,11 +285,23 @@ class CloudKitService {
         profile.ownedTitleBadges = record["ownedTitleBadges"] as? String
         profile.ownedGameInviteThemes = record["ownedGameInviteThemes"] as? String
         profile.ownedPlayerColors = record["ownedPlayerColors"] as? String
+        profile.equippedNumberFont = record["equippedNumberFont"] as? String
+        profile.equippedSoundPack = record["equippedSoundPack"] as? String
+        profile.equippedChatBubbleStyle = record["equippedChatBubbleStyle"] as? String
+        profile.equippedProfileBanner = record["equippedProfileBanner"] as? String
+        profile.ownedNumberFonts = record["ownedNumberFonts"] as? String
+        profile.ownedSoundPacks = record["ownedSoundPacks"] as? String
+        profile.ownedChatBubbleStyles = record["ownedChatBubbleStyles"] as? String
+        profile.ownedProfileBanners = record["ownedProfileBanners"] as? String
+        profile.ownedEmotePacks = record["ownedEmotePacks"] as? String
+        profile.profileBio = record["profileBio"] as? String
         profile.hintTokens = (record["hintTokens"] as? Int) ?? 0
         
         profile.undoShields = (record["undoShields"] as? Int) ?? 0
         profile.streakSavers = (record["streakSavers"] as? Int) ?? 0
         profile.loginStreakSavers = (record["loginStreakSavers"] as? Int) ?? 0
+        profile.doubleXPTokens = (record["doubleXPTokens"] as? Int) ?? 0
+        profile.doubleXPActiveUntil = record["doubleXPActiveUntil"] as? Date
         profile.hasExtendedStats = ((record["hasExtendedStats"] as? Int) ?? 0) != 0
         profile.hasEmotePack = ((record["hasEmotePack"] as? Int) ?? 0) != 0
         profile.currentWinStreak = (record["currentWinStreak"] as? Int) ?? 0

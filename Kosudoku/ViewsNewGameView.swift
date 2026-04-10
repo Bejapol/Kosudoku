@@ -33,27 +33,32 @@ struct NewGameView: View {
                     .pickerStyle(.segmented)
                 }
                 
-                Section("Invite Friends") {
+                Section {
                     if acceptedFriends.isEmpty {
                         Text("No friends to invite")
                             .foregroundColor(.secondary)
                     } else {
                         ForEach(acceptedFriends, id: \.id) { friendship in
                             let friendRecord = otherPersonRecordName(friendship)
-                            HStack {
-                                OnlineStatusIndicator(ownerRecordName: friendRecord)
-                                Text(friendship.friendDisplayName)
-                                Spacer()
-                                if selectedFriends.contains(friendRecord) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.blue)
+                            let isSelected = selectedFriends.contains(friendRecord)
+                            InviteFriendRow(
+                                name: friendship.friendDisplayName,
+                                ownerRecordName: friendRecord,
+                                isSelected: isSelected,
+                                onInviteTap: {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        toggleFriendSelection(friendRecord)
+                                    }
                                 }
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                toggleFriendSelection(friendRecord)
-                            }
+                            )
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                         }
+                    }
+                } header: {
+                    Text("Invite Friends")
+                } footer: {
+                    if !selectedFriends.isEmpty {
+                        Text("\(selectedFriends.count) friend\(selectedFriends.count == 1 ? "" : "s") selected")
                     }
                 }
                 
@@ -172,6 +177,136 @@ struct NewGameView: View {
             errorMessage = "Failed to create game: \(error.localizedDescription)\n\nPlease check your iCloud connection."
             showingError = true
             isCreating = false
+        }
+    }
+}
+
+// MARK: - Invite Friend Row
+
+struct InviteFriendRow: View {
+    let name: String
+    let ownerRecordName: String
+    let isSelected: Bool
+    let onInviteTap: () -> Void
+    
+    @State private var profileImageData: Data?
+    @State private var rankTier: RankTier?
+    @State private var profileFrame: ProfileFrame?
+    @State private var showingProfile = false
+    @State private var cloudKitService = CloudKitService.shared
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Profile photo with frame and online indicator
+            ProfilePhotoView(
+                imageData: profileImageData,
+                displayName: name,
+                size: 40,
+                profileFrame: profileFrame
+            )
+            .overlay(alignment: .bottomTrailing) {
+                OnlineStatusIndicator(ownerRecordName: ownerRecordName)
+            }
+            
+            // Name and rank — tappable to show profile
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(name)
+                        .font(.body)
+                        .fontWeight(.medium)
+                    
+                    if let tier = rankTier {
+                        RankTierBadge(tier: tier, showLabel: false, size: 12)
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { showingProfile = true }
+            
+            Spacer()
+            
+            // Invite button
+            Button {
+                onInviteTap()
+            } label: {
+                if isSelected {
+                    Label("Invited", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .cornerRadius(16)
+                } else {
+                    Label("Invite", systemImage: "plus.circle")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.blue)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(16)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .sheet(isPresented: $showingProfile) {
+            PlayerProfileView(ownerRecordName: ownerRecordName)
+        }
+        .task {
+            await loadProfile()
+        }
+    }
+    
+    // MARK: - Profile Loading
+    
+    private static var photoCache: [String: Data] = [:]
+    private static var rankCache: [String: RankTier] = [:]
+    private static var frameCache: [String: ProfileFrame] = [:]
+    
+    private func loadProfile() async {
+        if let cached = Self.photoCache[ownerRecordName] {
+            if profileImageData == nil { profileImageData = cached }
+        }
+        if let cachedRank = Self.rankCache[ownerRecordName] {
+            rankTier = cachedRank
+        }
+        if let cachedFrame = Self.frameCache[ownerRecordName] {
+            profileFrame = cachedFrame
+        }
+        if Self.photoCache[ownerRecordName] != nil {
+            return
+        }
+        
+        // Current user — use local profile
+        if ownerRecordName == cloudKitService.currentUserRecordName,
+           let currentProfile = cloudKitService.currentUserProfile {
+            profileImageData = currentProfile.avatarImageData
+            rankTier = currentProfile.rankTier
+            profileFrame = currentProfile.activeProfileFrame
+            if let data = currentProfile.avatarImageData {
+                Self.photoCache[ownerRecordName] = data
+            }
+            Self.rankCache[ownerRecordName] = currentProfile.rankTier
+            Self.frameCache[ownerRecordName] = currentProfile.activeProfileFrame
+            return
+        }
+        
+        // Other users — fetch from CloudKit
+        do {
+            if let profile = try await cloudKitService.fetchUserProfileByOwner(ownerRecordName: ownerRecordName) {
+                profileImageData = profile.avatarImageData
+                rankTier = profile.rankTier
+                profileFrame = profile.activeProfileFrame
+                if let data = profile.avatarImageData {
+                    Self.photoCache[ownerRecordName] = data
+                }
+                Self.rankCache[ownerRecordName] = profile.rankTier
+                Self.frameCache[ownerRecordName] = profile.activeProfileFrame
+            }
+        } catch {
+            print("Failed to load profile for \(name): \(error)")
         }
     }
 }

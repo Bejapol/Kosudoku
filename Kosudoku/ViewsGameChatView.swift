@@ -96,7 +96,8 @@ struct GameChatView: View {
         } else {
             ChatMessageBubble(
                 message: message,
-                isCurrentUser: message.senderRecordName == cloudKitService.currentUserRecordName
+                isCurrentUser: message.senderRecordName == cloudKitService.currentUserRecordName,
+                bubbleStyle: cloudKitService.currentUserProfile?.activeChatBubbleStyle ?? .classic
             )
         }
     }
@@ -108,7 +109,8 @@ struct GameChatView: View {
                     await sendEmote(emote)
                 }
             },
-            isUnlocked: cloudKitService.currentUserProfile?.hasEmotePack ?? false
+            isUnlocked: cloudKitService.currentUserProfile?.hasEmotePack ?? false,
+            availableEmotes: cloudKitService.currentUserProfile?.availableEmotes ?? GameEmote.classicPack
         )
     }
     

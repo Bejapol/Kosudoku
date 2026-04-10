@@ -36,6 +36,10 @@ final class UserProfile {
     var equippedProfileFrame: String?
     var equippedTitleBadge: String?
     var equippedGameInviteTheme: String?
+    var equippedNumberFont: String?
+    var equippedSoundPack: String?
+    var equippedChatBubbleStyle: String?
+    var equippedProfileBanner: String?
     
     // MARK: - Owned Sets (comma-separated raw values of purchased items)
     
@@ -46,6 +50,11 @@ final class UserProfile {
     var ownedTitleBadges: String?
     var ownedGameInviteThemes: String?
     var ownedPlayerColors: String?
+    var ownedNumberFonts: String?
+    var ownedSoundPacks: String?
+    var ownedChatBubbleStyles: String?
+    var ownedProfileBanners: String?
+    var ownedEmotePacks: String?
     
     // MARK: - Consumable Boosts
     
@@ -53,11 +62,17 @@ final class UserProfile {
     var undoShields: Int = 0
     var streakSavers: Int = 0
     var loginStreakSavers: Int = 0
+    var doubleXPTokens: Int = 0
+    var doubleXPActiveUntil: Date?
     
     // MARK: - One-Time Unlocks
     
     var hasExtendedStats: Bool = false
     var hasEmotePack: Bool = false
+    
+    // MARK: - Profile Bio
+    
+    var profileBio: String?
     
     // MARK: - Win Streak
     
@@ -156,6 +171,22 @@ final class UserProfile {
         PlayerColor.defaultColors.contains(color) || ownsItem(in: ownedPlayerColors, rawValue: String(color.rawValue))
     }
     
+    func ownsNumberFont(_ font: NumberFont) -> Bool {
+        font == .classic || ownsItem(in: ownedNumberFonts, rawValue: font.rawValue)
+    }
+    
+    func ownsSoundPack(_ pack: SoundPack) -> Bool {
+        pack == .classic || ownsItem(in: ownedSoundPacks, rawValue: pack.rawValue)
+    }
+    
+    func ownsChatBubbleStyle(_ style: ChatBubbleStyle) -> Bool {
+        style == .classic || ownsItem(in: ownedChatBubbleStyles, rawValue: style.rawValue)
+    }
+    
+    func ownsProfileBanner(_ banner: ProfileBanner) -> Bool {
+        banner == .none || ownsItem(in: ownedProfileBanners, rawValue: banner.rawValue)
+    }
+    
     // Computed accessors for equipped items
     
     var activeCellTheme: CellTheme {
@@ -180,6 +211,53 @@ final class UserProfile {
     
     var activeGameInviteTheme: GameInviteTheme {
         GameInviteTheme(rawValue: equippedGameInviteTheme ?? "") ?? .classic
+    }
+    
+    var activeNumberFont: NumberFont {
+        NumberFont(rawValue: equippedNumberFont ?? "") ?? .classic
+    }
+    
+    var activeSoundPack: SoundPack {
+        SoundPack(rawValue: equippedSoundPack ?? "") ?? .classic
+    }
+    
+    var activeChatBubbleStyle: ChatBubbleStyle {
+        ChatBubbleStyle(rawValue: equippedChatBubbleStyle ?? "") ?? .classic
+    }
+    
+    var activeProfileBanner: ProfileBanner {
+        ProfileBanner(rawValue: equippedProfileBanner ?? "") ?? .none
+    }
+    
+    // MARK: - Double XP
+    
+    var isDoubleXPActive: Bool {
+        guard let until = doubleXPActiveUntil else { return false }
+        return Date() < until
+    }
+    
+    // MARK: - Emote Packs
+    
+    var hasCelebrationPack: Bool {
+        ownsItem(in: ownedEmotePacks, rawValue: "celebration")
+    }
+    
+    var hasAnimalsPack: Bool {
+        ownsItem(in: ownedEmotePacks, rawValue: "animals")
+    }
+    
+    var availableEmotes: [GameEmote] {
+        var emotes: [GameEmote] = []
+        if hasEmotePack {
+            emotes.append(contentsOf: GameEmote.classicPack)
+        }
+        if hasCelebrationPack {
+            emotes.append(contentsOf: GameEmote.celebrationPack)
+        }
+        if hasAnimalsPack {
+            emotes.append(contentsOf: GameEmote.animalsPack)
+        }
+        return emotes
     }
     
     // MARK: - Engagement Helpers

@@ -1042,8 +1042,8 @@ class GameManager {
     }
     
     private func syncGameState() async {
-        // Guard against overlapping sync calls
-        guard !isSyncing else { return }
+        // Guard against overlapping sync calls and avoid racing with makeMove
+        guard !isSyncing, !isMakingMove else { return }
         isSyncing = true
         defer { isSyncing = false }
         
@@ -1168,7 +1168,9 @@ class GameManager {
             if let latestData = cloudPuzzleData,
                let cloudBoard = SudokuBoard.fromJSONString(latestData) {
                 await MainActor.run {
-                    if var currentBoardState = self.currentBoard {
+                    if var currentBoardState = self.currentBoard,
+                       let playerState = self.currentPlayerState {
+                        var statsReverted = false
                         for row in 0..<9 {
                             for col in 0..<9 {
                                 let cloudCell = cloudBoard[row, col]
@@ -1184,10 +1186,37 @@ class GameManager {
                                         localCell.completedBy == nil {
                                     currentBoardState[row, col].completedBy = completedBy
                                 }
+                                
+                                // Reconcile: if the cloud says another player completed
+                                // this cell, but our local stats still claim it, revert
+                                // our credit. This catches races where makeMove awarded
+                                // points before the post-save verification could run.
+                                if let cloudOwner = cloudCell.completedBy,
+                                   cloudOwner != currentPlayerRecordName {
+                                    let cellKey = "\(row)-\(col)"
+                                    if playerState.cellsCompleted.contains(cellKey) {
+                                        playerState.cellsCompleted.removeAll { $0 == cellKey }
+                                        playerState.correctGuesses = max(0, playerState.correctGuesses - 1)
+                                        playerState.score = max(0, playerState.score - ScoringSystem.pointsForCorrectGuess(difficulty: game.difficulty))
+                                        currentBoardState[row, col] = cloudCell
+                                        statsReverted = true
+                                    }
+                                }
                             }
                         }
                         self.currentBoard = currentBoardState
                         game.puzzleData = currentBoardState.toJSONString()
+                        
+                        // If we reverted any stats, save the corrected state to CloudKit
+                        if statsReverted {
+                            playerState.currentBoardData = currentBoardState.toJSONString()
+                            try? self.modelContext.save()
+                            let ck = self.cloudKit
+                            let grn = gameRecordName
+                            Task {
+                                try? await ck.savePlayerState(playerState, gameRecordName: grn)
+                            }
+                        }
                     }
                 }
             }

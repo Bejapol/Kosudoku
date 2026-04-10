@@ -99,6 +99,7 @@ struct EmoteAnimationOverlay: View {
 struct EmoteBarView: View {
     let onEmoteTap: (GameEmote) -> Void
     let isUnlocked: Bool
+    var availableEmotes: [GameEmote] = GameEmote.classicPack
     
     @State private var lastEmoteTime: Date = .distantPast
     
@@ -106,7 +107,7 @@ struct EmoteBarView: View {
         if isUnlocked {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(GameEmote.allCases, id: \.rawValue) { emote in
+                    ForEach(availableEmotes, id: \.rawValue) { emote in
                         Button {
                             // 2-second cooldown between emotes
                             let now = Date()

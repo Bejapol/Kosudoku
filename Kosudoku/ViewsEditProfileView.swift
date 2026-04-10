@@ -13,6 +13,7 @@ struct EditProfileView: View {
     @Bindable var profile: UserProfile
     @State private var displayName: String
     @State private var profilePhotoData: Data?
+    @State private var profileBio: String
     @State private var isSaving = false
     private let cloudKitService = CloudKitService.shared
     
@@ -20,6 +21,7 @@ struct EditProfileView: View {
         self.profile = profile
         _displayName = State(initialValue: profile.displayName)
         _profilePhotoData = State(initialValue: profile.avatarImageData)
+        _profileBio = State(initialValue: profile.profileBio ?? "")
     }
     
     var body: some View {
@@ -45,6 +47,12 @@ struct EditProfileView: View {
                 
                 Section("Profile Information") {
                     TextField("Display Name", text: $displayName)
+                    TextField("Bio (optional)", text: $profileBio)
+                        .onChange(of: profileBio) { _, newValue in
+                            if newValue.count > 100 {
+                                profileBio = String(newValue.prefix(100))
+                            }
+                        }
                 }
                 
                 Section {
@@ -97,6 +105,7 @@ struct EditProfileView: View {
         // Update the local SwiftData model
         profile.displayName = displayName
         profile.avatarImageData = profilePhotoData
+        profile.profileBio = profileBio.isEmpty ? nil : profileBio
         
         // Sync to CloudKit in the background — don't block dismissal on it
         do {

@@ -31,6 +31,7 @@ struct SudokuGridView: View {
     @Binding var cellEffect: CellEffect?
     var cellTheme: CellTheme = .classic
     var boardSkin: BoardSkin = .classic
+    var numberFont: NumberFont = .classic
     
     var body: some View {
         GeometryReader { geometry in
@@ -63,7 +64,8 @@ struct SudokuGridView: View {
                             currentPlayerColor: currentPlayerColor,
                             otherSelectingColors: otherSelectingColors,
                             completedByColor: completedByColor,
-                            cellTheme: cellTheme
+                            cellTheme: cellTheme,
+                            numberFont: numberFont
                         )
                         .frame(width: cellSize, height: cellSize)
                         .contentShape(Rectangle())  // Makes entire cell area tappable
@@ -194,6 +196,7 @@ struct SudokuCellView: View {
     let otherSelectingColors: [PlayerColor]
     let completedByColor: Color?
     var cellTheme: CellTheme = .classic
+    var numberFont: NumberFont = .classic
     
     var body: some View {
         ZStack {
@@ -206,7 +209,7 @@ struct SudokuCellView: View {
             // Cell content
             if let value = cell.value {
                 Text("\(value)")
-                    .font(.title)
+                    .font(numberFont.font(size: 24))
                     .bold(cell.isFixed)
                     .foregroundColor(cell.isFixed ? .primary : (completedByColor ?? currentPlayerColor))
                     .shadow(color: cellTheme == .neonGlow ? (completedByColor ?? currentPlayerColor).opacity(0.6) : .clear, radius: 4)
@@ -465,7 +468,8 @@ struct NotesView: View {
         colorMap: [:],
         cellEffect: .constant(nil),
         cellTheme: .classic,
-        boardSkin: .classic
+        boardSkin: .classic,
+        numberFont: .classic
     )
     .frame(width: 350, height: 350)
     .padding()

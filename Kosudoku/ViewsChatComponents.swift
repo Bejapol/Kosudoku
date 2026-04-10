@@ -12,6 +12,7 @@ import SwiftData
 struct ChatMessageBubble: View {
     let message: ChatMessage
     let isCurrentUser: Bool
+    var bubbleStyle: ChatBubbleStyle = .classic
     @State private var profileImageData: Data?
     @State private var profileFrame: ProfileFrame?
     @State private var cloudKitService = CloudKitService.shared
@@ -45,9 +46,10 @@ struct ChatMessageBubble: View {
                 Text(message.content)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(isCurrentUser ? Color.blue : Color(.systemGray5))
-                    .foregroundColor(isCurrentUser ? .white : .primary)
-                    .cornerRadius(16)
+                    .background(bubbleBackground)
+                    .foregroundColor(bubbleForeground)
+                    .cornerRadius(bubbleStyle == .comic ? 20 : 16)
+                    .overlay(bubbleOverlay)
                 
                 Text(message.timestamp, style: .time)
                     .font(.caption2)
@@ -72,6 +74,60 @@ struct ChatMessageBubble: View {
         }
         .sheet(isPresented: $showingProfile) {
             PlayerProfileView(ownerRecordName: message.senderRecordName)
+        }
+    }
+    
+    @ViewBuilder
+    private var bubbleBackground: some View {
+        switch bubbleStyle {
+        case .classic:
+            isCurrentUser ? Color.blue : Color(.systemGray5)
+        case .comic:
+            isCurrentUser ? Color.blue : Color(.systemGray5)
+        case .minimal:
+            Color.clear
+        case .neon:
+            Color(red: 0.1, green: 0.1, blue: 0.15)
+        }
+    }
+    
+    private var bubbleForeground: Color {
+        switch bubbleStyle {
+        case .classic, .comic:
+            return isCurrentUser ? .white : .primary
+        case .minimal:
+            return .primary
+        case .neon:
+            return isCurrentUser ? .cyan : .green
+        }
+    }
+    
+    @ViewBuilder
+    private var bubbleOverlay: some View {
+        switch bubbleStyle {
+        case .classic:
+            EmptyView()
+        case .comic:
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(isCurrentUser ? Color.blue.opacity(0.8) : Color(.systemGray3), lineWidth: 2)
+        case .minimal:
+            HStack {
+                if isCurrentUser {
+                    Spacer()
+                    Rectangle()
+                        .fill(Color.blue)
+                        .frame(width: 3)
+                } else {
+                    Rectangle()
+                        .fill(Color(.systemGray3))
+                        .frame(width: 3)
+                    Spacer()
+                }
+            }
+        case .neon:
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(isCurrentUser ? Color.cyan : Color.green, lineWidth: 1.5)
+                .shadow(color: isCurrentUser ? .cyan.opacity(0.5) : .green.opacity(0.5), radius: 4)
         }
     }
     

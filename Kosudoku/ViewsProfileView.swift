@@ -30,39 +30,69 @@ struct ProfileView: View {
             List {
                 if let profile = currentProfile {
                     Section {
-                        HStack {
-                            Spacer()
-                            VStack(spacing: 12) {
+                        VStack(spacing: 0) {
+                            // Profile Banner
+                            if profile.activeProfileBanner != .none {
+                                LinearGradient(
+                                    colors: profile.activeProfileBanner.gradientColors,
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                                .frame(height: 80)
+                                .overlay(alignment: .bottom) {
+                                    // Avatar overlapping the banner
+                                    ProfilePhotoView(
+                                        imageData: profile.avatarImageData,
+                                        displayName: profile.displayName,
+                                        size: 80,
+                                        profileFrame: profile.activeProfileFrame
+                                    )
+                                    .offset(y: 40)
+                                }
+                                
+                                Spacer().frame(height: 48)
+                            } else {
                                 ProfilePhotoView(
                                     imageData: profile.avatarImageData,
                                     displayName: profile.displayName,
                                     size: 80,
                                     profileFrame: profile.activeProfileFrame
                                 )
+                                .padding(.top, 8)
+                            }
+                            
+                            HStack(spacing: 6) {
+                                Text(profile.displayName)
+                                    .font(.title2)
+                                    .bold()
                                 
-                                HStack(spacing: 6) {
-                                    Text(profile.displayName)
-                                        .font(.title2)
-                                        .bold()
-                                    
-                                    if profile.activeTitleBadge != .none {
-                                        Text(profile.activeTitleBadge.displayName)
-                                            .font(.caption)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(Color.purple.opacity(0.15))
-                                            .foregroundColor(.purple)
-                                            .cornerRadius(4)
-                                    }
+                                if profile.activeTitleBadge != .none {
+                                    Text(profile.activeTitleBadge.displayName)
+                                        .font(.caption)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.purple.opacity(0.15))
+                                        .foregroundColor(.purple)
+                                        .cornerRadius(4)
                                 }
-                                
-                                Text("@\(profile.username)")
+                            }
+                            .padding(.top, 8)
+                            
+                            Text("@\(profile.username)")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            
+                            if let bio = profile.profileBio, !bio.isEmpty {
+                                Text(bio)
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.top, 4)
+                                    .padding(.horizontal)
                             }
-                            .padding(.vertical)
-                            Spacer()
                         }
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 8)
                     }
                     
                     // Level & Rank Section
@@ -238,8 +268,28 @@ struct ProfileView: View {
                         if profile.activeGameInviteTheme != .classic {
                             Label("Invite: \(profile.activeGameInviteTheme.displayName)", systemImage: profile.activeGameInviteTheme.icon)
                         }
+                        if profile.activeNumberFont != .classic {
+                            Label("Font: \(profile.activeNumberFont.displayName)", systemImage: profile.activeNumberFont.icon)
+                        }
+                        if profile.activeSoundPack != .classic {
+                            Label("Sound: \(profile.activeSoundPack.displayName)", systemImage: profile.activeSoundPack.icon)
+                        }
+                        if profile.activeChatBubbleStyle != .classic {
+                            Label("Chat: \(profile.activeChatBubbleStyle.displayName)", systemImage: profile.activeChatBubbleStyle.icon)
+                        }
+                        if profile.activeProfileBanner != .none {
+                            Label("Banner: \(profile.activeProfileBanner.displayName)", systemImage: profile.activeProfileBanner.icon)
+                        }
                         if profile.hasEmotePack {
-                            Label("Emote Pack", systemImage: "face.smiling")
+                            Label("Classic Emote Pack", systemImage: "face.smiling")
+                                .foregroundColor(.green)
+                        }
+                        if profile.hasCelebrationPack {
+                            Label("Celebration Pack", systemImage: "party.popper")
+                                .foregroundColor(.green)
+                        }
+                        if profile.hasAnimalsPack {
+                            Label("Animals Pack", systemImage: "pawprint.fill")
                                 .foregroundColor(.green)
                         }
                         if profile.hasExtendedStats {
@@ -248,7 +298,7 @@ struct ProfileView: View {
                         }
                         
                         // Consumable counts
-                        if profile.hintTokens > 0 || profile.undoShields > 0 || profile.streakSavers > 0 || profile.loginStreakSavers > 0 {
+                        if profile.hintTokens > 0 || profile.undoShields > 0 || profile.streakSavers > 0 || profile.loginStreakSavers > 0 || profile.doubleXPTokens > 0 {
                             HStack(spacing: 16) {
                                 if profile.hintTokens > 0 {
                                     Label("\(profile.hintTokens)", systemImage: "lightbulb.fill")
@@ -269,6 +319,11 @@ struct ProfileView: View {
                                     Label("\(profile.loginStreakSavers)", systemImage: "calendar.badge.checkmark")
                                         .font(.caption)
                                         .foregroundColor(.blue)
+                                }
+                                if profile.doubleXPTokens > 0 {
+                                    Label("\(profile.doubleXPTokens)", systemImage: "arrow.up.forward.circle.fill")
+                                        .font(.caption)
+                                        .foregroundColor(.purple)
                                 }
                             }
                         }

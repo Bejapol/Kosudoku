@@ -408,27 +408,6 @@ struct ScoringInfoView: View {
                     }
                 }
                 
-                Section("Speed Bonus (end of game)") {
-                    HStack {
-                        Label("< 10 sec / cell", systemImage: "hare.fill")
-                        Spacer()
-                        Text("+5 pts/cell")
-                            .bold()
-                    }
-                    HStack {
-                        Label("10–20 sec / cell", systemImage: "figure.walk")
-                        Spacer()
-                        Text("+2 pts/cell")
-                            .bold()
-                    }
-                    HStack {
-                        Label("> 20 sec / cell", systemImage: "tortoise.fill")
-                        Spacer()
-                        Text("+0")
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
                 Section("Winner Determination") {
                     VStack(alignment: .leading, spacing: 6) {
                         Label("1. Highest score", systemImage: "trophy.fill")

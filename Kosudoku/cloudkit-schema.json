@@ -112,6 +112,54 @@
           "type": "INT64"
         },
         {
+          "name": "doubleXPTokens",
+          "type": "INT64"
+        },
+        {
+          "name": "doubleXPActiveUntil",
+          "type": "TIMESTAMP"
+        },
+        {
+          "name": "equippedNumberFont",
+          "type": "STRING"
+        },
+        {
+          "name": "ownedNumberFonts",
+          "type": "STRING"
+        },
+        {
+          "name": "equippedSoundPack",
+          "type": "STRING"
+        },
+        {
+          "name": "ownedSoundPacks",
+          "type": "STRING"
+        },
+        {
+          "name": "equippedChatBubbleStyle",
+          "type": "STRING"
+        },
+        {
+          "name": "ownedChatBubbleStyles",
+          "type": "STRING"
+        },
+        {
+          "name": "equippedProfileBanner",
+          "type": "STRING"
+        },
+        {
+          "name": "ownedProfileBanners",
+          "type": "STRING"
+        },
+        {
+          "name": "profileBio",
+          "type": "STRING"
+        },
+        {
+          "name": "ownedEmotePacks",
+          "type": "STRING"
+        },
+        {
           "name": "hasExtendedStats",
           "type": "INT64"
         },

@@ -307,18 +307,11 @@ Time    Event                           Your Score    Alice's Score
 
 ## Final Score Calculation
 
-At game completion, additional bonuses applied:
+The final score is simply the running total from all moves:
 
 ```swift
-Final Score = Current Score + Speed Bonus + Position Bonus
-
-Where:
-- Current Score: All points earned during game
-- Speed Bonus: 0-5 points per cell based on speed
-- Position Bonus: 100 (1st) / 50 (2nd) / 25 (3rd)
+Final Score = Sum of correct-guess points - Sum of incorrect-guess penalties (minimum 0)
 ```
-
-**Important**: Position bonus based on FINAL completion order, not current standings.
 
 ## Summary
 

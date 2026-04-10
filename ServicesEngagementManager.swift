@@ -181,6 +181,11 @@ class EngagementManager {
             finalAmount *= 2.0
         }
         
+        // Apply double XP token if active
+        if profile.isDoubleXPActive {
+            finalAmount *= 2.0
+        }
+        
         let xpGained = Int(finalAmount)
         let oldLevel = profile.playerLevel
         

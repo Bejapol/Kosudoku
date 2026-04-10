@@ -186,6 +186,98 @@ struct StoreView: View {
                                 equipItem { $0.equippedGameInviteTheme = theme.rawValue }
                             }
                         )
+                        
+                        sectionDivider
+                        
+                        // Number Fonts
+                        cosmeticSection(
+                            title: "Number Fonts",
+                            icon: "textformat",
+                            description: "Change the digit style on the board",
+                            items: NumberFont.allCases,
+                            equippedRaw: profile?.equippedNumberFont,
+                            ownedSet: profile?.ownedNumberFonts,
+                            defaultCase: .classic,
+                            owns: { profile?.ownsNumberFont($0) ?? ($0 == .classic) },
+                            onPurchase: { font in
+                                await purchaseCosmeticItem(cost: font.price) { p in
+                                    p.ownedNumberFonts = UserProfile.addToOwnedSet(p.ownedNumberFonts, rawValue: font.rawValue)
+                                    p.equippedNumberFont = font.rawValue
+                                }
+                            },
+                            onEquip: { font in
+                                equipItem { $0.equippedNumberFont = font.rawValue }
+                            }
+                        )
+                        
+                        sectionDivider
+                        
+                        // Sound Packs
+                        cosmeticSection(
+                            title: "Sound Packs",
+                            icon: "speaker.wave.2.fill",
+                            description: "Change game sound effects",
+                            items: SoundPack.allCases,
+                            equippedRaw: profile?.equippedSoundPack,
+                            ownedSet: profile?.ownedSoundPacks,
+                            defaultCase: .classic,
+                            owns: { profile?.ownsSoundPack($0) ?? ($0 == .classic) },
+                            onPurchase: { pack in
+                                await purchaseCosmeticItem(cost: pack.price) { p in
+                                    p.ownedSoundPacks = UserProfile.addToOwnedSet(p.ownedSoundPacks, rawValue: pack.rawValue)
+                                    p.equippedSoundPack = pack.rawValue
+                                }
+                            },
+                            onEquip: { pack in
+                                equipItem { $0.equippedSoundPack = pack.rawValue }
+                            }
+                        )
+                        
+                        sectionDivider
+                        
+                        // Chat Bubble Styles
+                        cosmeticSection(
+                            title: "Chat Bubble Styles",
+                            icon: "bubble.left.fill",
+                            description: "Change the look of chat messages",
+                            items: ChatBubbleStyle.allCases,
+                            equippedRaw: profile?.equippedChatBubbleStyle,
+                            ownedSet: profile?.ownedChatBubbleStyles,
+                            defaultCase: .classic,
+                            owns: { profile?.ownsChatBubbleStyle($0) ?? ($0 == .classic) },
+                            onPurchase: { style in
+                                await purchaseCosmeticItem(cost: style.price) { p in
+                                    p.ownedChatBubbleStyles = UserProfile.addToOwnedSet(p.ownedChatBubbleStyles, rawValue: style.rawValue)
+                                    p.equippedChatBubbleStyle = style.rawValue
+                                }
+                            },
+                            onEquip: { style in
+                                equipItem { $0.equippedChatBubbleStyle = style.rawValue }
+                            }
+                        )
+                        
+                        sectionDivider
+                        
+                        // Profile Banners
+                        cosmeticSection(
+                            title: "Profile Banners",
+                            icon: "rectangle.fill",
+                            description: "Decorative gradient banners for your profile",
+                            items: ProfileBanner.allCases,
+                            equippedRaw: profile?.equippedProfileBanner,
+                            ownedSet: profile?.ownedProfileBanners,
+                            defaultCase: .none,
+                            owns: { profile?.ownsProfileBanner($0) ?? ($0 == .none) },
+                            onPurchase: { banner in
+                                await purchaseCosmeticItem(cost: banner.price) { p in
+                                    p.ownedProfileBanners = UserProfile.addToOwnedSet(p.ownedProfileBanners, rawValue: banner.rawValue)
+                                    p.equippedProfileBanner = banner.rawValue
+                                }
+                            },
+                            onEquip: { banner in
+                                equipItem { $0.equippedProfileBanner = banner.rawValue }
+                            }
+                        )
                     }
                     
                     // MARK: - Gameplay Boosts
@@ -213,17 +305,55 @@ struct StoreView: View {
                             count: profile?.loginStreakSavers ?? 0,
                             onPurchase: { await purchaseConsumable(cost: 5) { $0.loginStreakSavers += 1 } }
                         )
+                        sectionDivider
+                        doubleXPRow
                     }
                     
                     // MARK: - Social
                     storeSection(title: "Social", icon: "person.2.fill") {
                         unlockableRow(
-                            name: "Emote Pack",
+                            name: "Classic Emote Pack",
                             icon: "face.smiling",
                             description: "6 quick-reaction emotes for game chat & lobby",
                             isUnlocked: profile?.hasEmotePack ?? false,
                             price: 8,
                             onPurchase: { await purchaseConsumable(cost: 8) { $0.hasEmotePack = true } }
+                        )
+                        sectionDivider
+                        unlockableRow(
+                            name: "Celebration Pack",
+                            icon: "party.popper",
+                            description: "6 celebration emotes: 🎉😍🏆🚀✨🤡",
+                            isUnlocked: profile?.hasCelebrationPack ?? false,
+                            price: 8,
+                            onPurchase: {
+                                await purchaseConsumable(cost: 8) { p in
+                                    let current = p.ownedEmotePacks ?? ""
+                                    if current.isEmpty {
+                                        p.ownedEmotePacks = "celebration"
+                                    } else if !current.contains("celebration") {
+                                        p.ownedEmotePacks = current + ",celebration"
+                                    }
+                                }
+                            }
+                        )
+                        sectionDivider
+                        unlockableRow(
+                            name: "Animals Pack",
+                            icon: "pawprint.fill",
+                            description: "6 animal emotes: 🐱🐶🙈🐧🦄🐉",
+                            isUnlocked: profile?.hasAnimalsPack ?? false,
+                            price: 8,
+                            onPurchase: {
+                                await purchaseConsumable(cost: 8) { p in
+                                    let current = p.ownedEmotePacks ?? ""
+                                    if current.isEmpty {
+                                        p.ownedEmotePacks = "animals"
+                                    } else if !current.contains("animals") {
+                                        p.ownedEmotePacks = current + ",animals"
+                                    }
+                                }
+                            }
                         )
                     }
                     
@@ -639,6 +769,80 @@ struct StoreView: View {
         }
     }
     
+    // MARK: - Double XP Row
+    
+    private var doubleXPRow: some View {
+        HStack {
+            Image(systemName: ConsumableBoost.doubleXPToken.icon)
+                .font(.title3)
+                .foregroundColor(.purple)
+                .frame(width: 32)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(ConsumableBoost.doubleXPToken.displayName)
+                        .font(.subheadline).bold()
+                    if (profile?.doubleXPTokens ?? 0) > 0 {
+                        Text("x\(profile?.doubleXPTokens ?? 0)")
+                            .font(.caption)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.purple.opacity(0.2))
+                            .cornerRadius(4)
+                    }
+                }
+                Text(ConsumableBoost.doubleXPToken.description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                if profile?.isDoubleXPActive == true,
+                   let until = profile?.doubleXPActiveUntil {
+                    let remaining = Int(until.timeIntervalSinceNow / 60) + 1
+                    Text("Active: \(remaining)m remaining")
+                        .font(.caption)
+                        .foregroundColor(.purple)
+                        .bold()
+                }
+            }
+            
+            Spacer()
+            
+            VStack(spacing: 4) {
+                Button {
+                    Task { await purchaseConsumable(cost: 8) { $0.doubleXPTokens += 1 } }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "ticket.fill")
+                            .font(.caption)
+                        Text("\(ConsumableBoost.doubleXPToken.price)")
+                            .font(.subheadline).bold()
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.orange)
+                    .foregroundColor(.white)
+                    .clipShape(Capsule())
+                }
+                .disabled((profile?.quickets ?? 0) < ConsumableBoost.doubleXPToken.price || isSaving)
+                
+                if (profile?.doubleXPTokens ?? 0) > 0 && profile?.isDoubleXPActive != true {
+                    Button {
+                        activateDoubleXP()
+                    } label: {
+                        Text("Activate")
+                            .font(.caption).bold()
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.purple)
+                            .foregroundColor(.white)
+                            .clipShape(Capsule())
+                    }
+                    .disabled(isSaving)
+                }
+            }
+        }
+    }
+    
     // MARK: - Unlockable Row
     
     private func unlockableRow(name: String, icon: String, description: String, isUnlocked: Bool, price: Int, onPurchase: @escaping () async -> Void) -> some View {
@@ -748,6 +952,20 @@ struct StoreView: View {
         } else if let error = storeManager.errorMessage {
             errorMessage = error
             showingError = true
+        }
+    }
+    
+    private func activateDoubleXP() {
+        guard let profile, profile.doubleXPTokens > 0 else { return }
+        isSaving = true
+        profile.doubleXPTokens -= 1
+        profile.doubleXPActiveUntil = Date().addingTimeInterval(15 * 60)
+        try? modelContext.save()
+        Task {
+            try? await cloudKitService.saveUserProfile(profile)
+            isSaving = false
+            itemSuccessMessage = "Double XP activated for 15 minutes!"
+            showingItemSuccess = true
         }
     }
     

@@ -11,9 +11,7 @@ A multiplayer Sudoku game built with SwiftUI, SwiftData, and CloudKit that allow
 - **Live Leaderboard**: Expandable in-game leaderboard showing current rankings
 - **Smart Scoring System**: 
   - Points for correct guesses (scaled by difficulty)
-  - Penalties for incorrect guesses
-  - Speed bonuses
-  - Position bonuses (1st, 2nd, 3rd place)
+  - Penalties for incorrect guesses (scaled by difficulty)
 - **Multiple Difficulty Levels**: Easy, Medium, Hard, Expert
 - **Notes Mode**: Add pencil marks to cells for planning
 
@@ -239,14 +237,8 @@ Kosudoku/
 - **Hard**: 2.0×
 - **Expert**: 2.5×
 
-### Bonuses
-- **Speed Bonus**: 
-  - < 10 sec/cell: 5 points per cell
-  - 10-20 sec/cell: 2 points per cell
-- **Position Bonus**:
-  - 1st place: 100 points
-  - 2nd place: 50 points
-  - 3rd place: 25 points
+### Score
+- **Final Score**: Sum of correct-guess points minus incorrect-guess penalties (minimum 0)
 
 ## Testing
 

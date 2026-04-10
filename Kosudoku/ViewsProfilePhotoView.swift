@@ -19,6 +19,10 @@ extension ProfileFrame {
         case .silverShine: return [Color(red: 0.75, green: 0.75, blue: 0.8), Color.white, Color(red: 0.75, green: 0.75, blue: 0.8)]
         case .goldenAura: return [Color.yellow, Color.white, Color.yellow, Color.orange]
         case .rainbow: return [Color.red, Color.orange, Color.yellow, Color.green, Color.blue, Color.purple]
+        case .pulseGold: return [Color.yellow, Color.orange, Color.yellow]
+        case .shimmerDiamond: return [Color.cyan, Color.white, Color.cyan, Color.white]
+        case .rotatingRainbow: return [Color.red, Color.orange, Color.yellow, Color.green, Color.blue, Color.purple]
+        case .fireFlicker: return [Color.red, Color.orange, Color.yellow, Color.red]
         }
     }
 }
@@ -90,16 +94,20 @@ struct ProfilePhotoView: View {
     @ViewBuilder
     private var frameOverlay: some View {
         if let frame = profileFrame, frame != .none {
-            Circle()
-                .strokeBorder(
-                    LinearGradient(
-                        colors: frame.gradientColors,
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: max(2, size * 0.06)
-                )
-                .frame(width: size + max(4, size * 0.1), height: size + max(4, size * 0.1))
+            if frame.isAnimated {
+                AnimatedProfileFrameView(frame: frame, size: size)
+            } else {
+                Circle()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: frame.gradientColors,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: max(2, size * 0.06)
+                    )
+                    .frame(width: size + max(4, size * 0.1), height: size + max(4, size * 0.1))
+            }
         }
     }
     
@@ -126,6 +134,97 @@ struct ProfilePhotoView: View {
         let hash = name.hashValue
         let index = abs(hash) % colors.count
         return colors[index]
+    }
+}
+
+/// Animated frame overlay for premium animated profile frames
+struct AnimatedProfileFrameView: View {
+    let frame: ProfileFrame
+    let size: CGFloat
+    
+    @State private var animationProgress: CGFloat = 0
+    
+    private var lineWidth: CGFloat { max(2, size * 0.06) }
+    private var frameSize: CGFloat { size + max(4, size * 0.1) }
+    
+    var body: some View {
+        ZStack {
+            switch frame {
+            case .pulseGold:
+                Circle()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: frame.gradientColors,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: lineWidth
+                    )
+                    .frame(width: frameSize, height: frameSize)
+                    .opacity(0.5 + 0.5 * animationProgress)
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                            animationProgress = 1
+                        }
+                    }
+                    
+            case .shimmerDiamond:
+                Circle()
+                    .strokeBorder(
+                        AngularGradient(
+                            colors: frame.gradientColors,
+                            center: .center,
+                            startAngle: .degrees(Double(animationProgress) * 360),
+                            endAngle: .degrees(Double(animationProgress) * 360 + 360)
+                        ),
+                        lineWidth: lineWidth
+                    )
+                    .frame(width: frameSize, height: frameSize)
+                    .onAppear {
+                        withAnimation(.linear(duration: 3.0).repeatForever(autoreverses: false)) {
+                            animationProgress = 1
+                        }
+                    }
+                    
+            case .rotatingRainbow:
+                Circle()
+                    .strokeBorder(
+                        AngularGradient(
+                            colors: frame.gradientColors + [frame.gradientColors.first ?? .red],
+                            center: .center
+                        ),
+                        lineWidth: lineWidth
+                    )
+                    .frame(width: frameSize, height: frameSize)
+                    .rotationEffect(.degrees(animationProgress * 360))
+                    .onAppear {
+                        withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) {
+                            animationProgress = 1
+                        }
+                    }
+                    
+            case .fireFlicker:
+                Circle()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: frame.gradientColors,
+                            startPoint: .bottom,
+                            endPoint: .top
+                        ),
+                        lineWidth: lineWidth
+                    )
+                    .frame(width: frameSize, height: frameSize)
+                    .opacity(0.7 + 0.3 * animationProgress)
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 0.3).repeatForever(autoreverses: true)) {
+                            animationProgress = 1
+                        }
+                    }
+                    
+            default:
+                EmptyView()
+            }
+        }
     }
 }
 

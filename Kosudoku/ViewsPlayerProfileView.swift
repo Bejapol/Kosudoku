@@ -23,41 +23,70 @@ struct PlayerProfileView: View {
                 } else if let profile {
                     List {
                         Section {
-                            HStack {
-                                Spacer()
-                                VStack(spacing: 12) {
+                            VStack(spacing: 0) {
+                                // Profile Banner
+                                if profile.activeProfileBanner != .none {
+                                    LinearGradient(
+                                        colors: profile.activeProfileBanner.gradientColors,
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                    .frame(height: 80)
+                                    .overlay(alignment: .bottom) {
+                                        ProfilePhotoView(
+                                            imageData: profile.avatarImageData,
+                                            displayName: profile.displayName,
+                                            size: 80,
+                                            profileFrame: profile.activeProfileFrame
+                                        )
+                                        .offset(y: 40)
+                                    }
+                                    
+                                    Spacer().frame(height: 48)
+                                } else {
                                     ProfilePhotoView(
                                         imageData: profile.avatarImageData,
                                         displayName: profile.displayName,
                                         size: 80,
                                         profileFrame: profile.activeProfileFrame
                                     )
+                                    .padding(.top, 8)
+                                }
+                                
+                                HStack(spacing: 6) {
+                                    OnlineStatusIndicator(ownerRecordName: ownerRecordName, size: 10)
                                     
-                                    HStack(spacing: 6) {
-                                        OnlineStatusIndicator(ownerRecordName: ownerRecordName, size: 10)
-                                        
-                                        Text(profile.displayName)
-                                            .font(.title2)
-                                            .bold()
-                                        
-                                        if profile.activeTitleBadge != .none {
-                                            Text(profile.activeTitleBadge.displayName)
-                                                .font(.caption)
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 2)
-                                                .background(Color.purple.opacity(0.15))
-                                                .foregroundColor(.purple)
-                                                .cornerRadius(4)
-                                        }
+                                    Text(profile.displayName)
+                                        .font(.title2)
+                                        .bold()
+                                    
+                                    if profile.activeTitleBadge != .none {
+                                        Text(profile.activeTitleBadge.displayName)
+                                            .font(.caption)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.purple.opacity(0.15))
+                                            .foregroundColor(.purple)
+                                            .cornerRadius(4)
                                     }
-                                    
-                                    Text("@\(profile.username)")
+                                }
+                                .padding(.top, 8)
+                                
+                                Text("@\(profile.username)")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                
+                                if let bio = profile.profileBio, !bio.isEmpty {
+                                    Text(bio)
                                         .font(.subheadline)
                                         .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.top, 4)
+                                        .padding(.horizontal)
                                 }
-                                .padding(.vertical)
-                                Spacer()
                             }
+                            .frame(maxWidth: .infinity)
+                            .padding(.bottom, 8)
                         }
                         
                         // Level & Rank

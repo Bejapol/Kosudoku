@@ -41,6 +41,10 @@ struct GameView: View {
         cloudKitService.currentUserProfile?.activeBoardSkin ?? .classic
     }
     
+    private var userNumberFont: NumberFont {
+        cloudKitService.currentUserProfile?.activeNumberFont ?? .classic
+    }
+    
     enum ViewMode {
         case gameboard  // Large gameboard, minimal controls
         case balanced   // Default balanced view
@@ -71,6 +75,30 @@ struct GameView: View {
     
     var body: some View {
         VStack(spacing: 0) {
+            // Double XP active indicator
+            if cloudKitService.currentUserProfile?.isDoubleXPActive == true {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.up.forward.circle.fill")
+                        .foregroundColor(.purple)
+                    Text("2x XP Active")
+                        .font(.caption)
+                        .bold()
+                        .foregroundColor(.purple)
+                    if let until = cloudKitService.currentUserProfile?.doubleXPActiveUntil {
+                        let remaining = Int(until.timeIntervalSinceNow / 60) + 1
+                        Text("(\(remaining)m)")
+                            .font(.caption)
+                            .foregroundColor(.purple.opacity(0.7))
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(Color.purple.opacity(0.1))
+                .cornerRadius(8)
+                .padding(.horizontal)
+                .padding(.top, 4)
+            }
+            
             // Live Leaderboard - shows all players' scores in real-time
             if viewMode != .gameboard && !isViewingCompleted {
                 LiveLeaderboardView(
@@ -123,7 +151,8 @@ struct GameView: View {
                             colorMap: gameManager.playerColorMap,
                             cellEffect: $gameManager.lastCellEffect,
                             cellTheme: userCellTheme,
-                            boardSkin: userBoardSkin
+                            boardSkin: userBoardSkin,
+                            numberFont: userNumberFont
                         )
                         .frame(width: gridSize, height: gridSize)
 
