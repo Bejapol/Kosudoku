@@ -15,18 +15,63 @@
   ],
   "products" : [
     {
-      "displayPrice" : "0.01",
+      "displayPrice" : "0.99",
       "familyShareable" : false,
       "internalID" : "A10FC09D",
       "localizations" : [
         {
-          "description" : "5 Quickets",
-          "displayName" : "5 Quickets",
+          "description" : "10 Quickets to spend in the store",
+          "displayName" : "10 Quickets",
           "locale" : "en_US"
         }
       ],
-      "productID" : "bejaflor.Kosudoku.quickets5",
-      "referenceName" : "5 Quickets",
+      "productID" : "bejaflor.Kosudoku.quickets10",
+      "referenceName" : "10 Quickets",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "B20FD10E",
+      "localizations" : [
+        {
+          "description" : "35 Quickets to spend in the store",
+          "displayName" : "35 Quickets",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "bejaflor.Kosudoku.quickets35",
+      "referenceName" : "35 Quickets",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "C30GE21F",
+      "localizations" : [
+        {
+          "description" : "65 Quickets to spend in the store",
+          "displayName" : "65 Quickets",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "bejaflor.Kosudoku.quickets65",
+      "referenceName" : "65 Quickets",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "D40HF32G",
+      "localizations" : [
+        {
+          "description" : "150 Quickets to spend in the store",
+          "displayName" : "150 Quickets",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "bejaflor.Kosudoku.quickets150",
+      "referenceName" : "150 Quickets",
       "type" : "Consumable"
     }
   ],
